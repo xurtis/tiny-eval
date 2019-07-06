@@ -58,6 +58,72 @@ pub enum Builtin {
     BinaryExclusiveOr,
 }
 
+pub mod construct {
+    use super::Builtin::*;
+    use crate::expr::{Expr, Identifier, construct::apply};
+
+    macro_rules! auto_apply {
+        ($(#[$doc:meta])* $builtin:ident => $name:ident($a:ident)) => {
+            $(#[$doc])*
+            pub fn $name<I: Identifier>($a: impl Into<Expr<I>>) -> Expr<I> {
+                apply($builtin, $a)
+            }
+        };
+        ($(#[$doc:meta])* $builtin:ident => $name:ident($a:ident, $b:ident)) => {
+            $(#[$doc])*
+            pub fn $name<I: Identifier>(
+                $a: impl Into<Expr<I>>,
+                $b: impl Into<Expr<I>>,
+            ) -> Expr<I> {
+                apply(apply($builtin, $a), $b)
+            }
+        };
+        ($(#[$doc:meta])* $builtin:ident => $name:ident($a:ident, $b:ident, $c:ident)) => {
+            $(#[$doc])*
+            pub fn $name<I: Identifier>(
+                $a: impl Into<Expr<I>>,
+                $b: impl Into<Expr<I>>,
+                $c: impl Into<Expr<I>>,
+            ) -> Expr<I> {
+                apply(apply(apply($builtin, $a), $b), $c)
+            }
+        };
+    }
+
+
+    auto_apply!(Condition => condition(cond, t, f));
+    auto_apply!(Pair => pair(first, second));
+    auto_apply!(First => first(pair));
+    auto_apply!(Second => second(pair));
+    auto_apply!(Left => left(value));
+    auto_apply!(Right => right(value));
+    auto_apply!(Case => case(sum, left, right));
+
+    auto_apply!(Not => not(a));
+    auto_apply!(And => and(a, b));
+    auto_apply!(Or => or(a, b));
+
+    auto_apply!(Greater => greater(a, b));
+    auto_apply!(GreaterEqual => greater_equal(a, b));
+    auto_apply!(Less => less(a, b));
+    auto_apply!(LessEqual => less_equal(a, b));
+    auto_apply!(Equal => equal(a, b));
+    auto_apply!(NotEqual => not_equal(a, b));
+
+    auto_apply!(Add => add(a, b));
+    auto_apply!(Subtract => subtract(a, b));
+    auto_apply!(Multiply => multiply(a, b));
+    auto_apply!(Divide => divide(a, b));
+    auto_apply!(Remainder => remainder(a, b));
+
+    auto_apply!(ShiftLeft => shift_left(a, b));
+    auto_apply!(ShiftRight => shift_right(a, b));
+    auto_apply!(BinaryOr => binary_or(a, b));
+    auto_apply!(BinaryAnd => binary_and(a, b));
+    auto_apply!(BinaryNot => binary_not(a));
+    auto_apply!(BinaryExclusiveOr => binary_exclusive_or(a, b));
+}
+
 macro_rules! binary_numeric {
     ($impl:expr) => {
         Ok(binary_numeric_op($impl, $impl, $impl))
@@ -185,7 +251,7 @@ pub fn val(value: impl Into<Builtin>) -> Builtin {
 }
 
 pub fn error(e: String) -> Value {
-    Value::Thunk(Rc::new(move || bail!("{}", e)))
+    Value::Thunk(Rc::new(move |_| bail!("{}", e)))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -347,9 +413,9 @@ fn pair() -> Value {
 /// Taking the first value of a pair
 fn first() -> Value {
     simple_op(|value: Value| {
-        match value {
+        match value.finalise()? {
             Value::Pair(first, _) => Ok(first.as_ref().clone()),
-            _ => bail!("{} is not a pair", value),
+            value => bail!("{} is not a pair", value),
         }
     })
 }
@@ -357,7 +423,7 @@ fn first() -> Value {
 /// Taking the second value of a pair
 fn second() -> Value {
     simple_op(|value: Value| {
-        match value {
+        match value.finalise()? {
             Value::Pair(_, second) => Ok(second.as_ref().clone()),
             value => bail!("{} is not a pair", value),
         }
@@ -381,7 +447,7 @@ fn right() -> Value {
 /// Handling cases of a sum
 fn case() -> Value {
     simple_op(|value: Value| {
-        match value {
+        match value.finalise()? {
             Value::Left(value) => {
                 Ok(infallable_op(move |left: Value| {
                     let left = left.clone();

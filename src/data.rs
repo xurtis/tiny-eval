@@ -18,7 +18,7 @@ pub enum Value {
     Left(Rc<Value>),
     Right(Rc<Value>),
     Function(Rc<dyn Fn(Value) -> Result<Value>>),
-    Thunk(Rc<dyn Fn() -> Result<Value>>),
+    Thunk(Rc<dyn Fn(Value) -> Result<Value>>),
 }
 
 impl From<bool> for Value {
@@ -93,10 +93,31 @@ impl Value {
     /// Reduce a lazy thunk down to a final value.
     pub fn finalise(mut self) -> Result<Value> {
         while let Value::Thunk(thunk) = self {
-            self = thunk()?;
+            let value = Value::Thunk(thunk.clone());
+            self = thunk(value)?;
         }
 
         Ok(self)
+    }
+
+    /// Recursively reducy a data structure with lazy thunks to a final value.
+    pub fn finalise_recursive(self) -> Result<Value> {
+        use Value::*;
+
+        let value = match self {
+            Pair(first, second) => {
+                Pair(
+                    Rc::new(first.as_ref().clone().finalise_recursive()?),
+                    Rc::new(second.as_ref().clone().finalise_recursive()?),
+                )
+            }
+            Left(left) => Left(Rc::new(left.as_ref().clone().finalise_recursive()?)),
+            Right(right) => Right(Rc::new(right.as_ref().clone().finalise_recursive()?)),
+            thunk @ Thunk(_) => thunk.finalise()?.finalise_recursive()?,
+            value => value,
+        };
+
+        Ok(value)
     }
 
     /// Take the value as a function.

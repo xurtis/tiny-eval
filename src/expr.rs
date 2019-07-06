@@ -14,7 +14,7 @@ pub fn eval<I: Identifier + Clone + 'static>(expr: impl Into<Expr<I>>) -> Result
 }
 
 /// Types that can be used as identifiers in expressions
-pub trait Identifier: ::std::hash::Hash + Eq + ::std::fmt::Display {}
+pub trait Identifier: Eq + ::std::fmt::Display {}
 
 impl<I: ::std::hash::Hash + Eq + ::std::fmt::Display> Identifier for I {}
 
@@ -64,7 +64,7 @@ impl<I: Identifier> fmt::Display for Expr<I> {
         match self {
             Expr::Builtin(b) => write!(f, "{}", b),
             Expr::Apply(l, a) => write!(f, "({} {})", l, a),
-            Expr::Lambda(n, v) => write!(f, "({} => {})", n, v),
+            Expr::Lambda(n, v) => write!(f, "({} -> {})", n, v),
             Expr::Bind { name, value, expr } => {
                 write!(f, "(let {} := {} in {})", name, value, expr)
             }
@@ -105,7 +105,16 @@ impl<I: Identifier + Clone + 'static> Context<I> {
     /// Returns the evaluated result of the added expression.
     pub fn extend(&mut self, name: I, expr: impl Into<Expr<I>>) -> Result<Value> {
         let expr = expr.into();
-        let value = self.eval(&expr)?;
+        let value = {
+            let context = self.clone();
+            let expr = expr.clone();
+            let name = name.clone();
+            Value::Thunk(Rc::new(move |thunk| {
+                let mut context = context.clone();
+                context.0.extend(name.clone(), thunk, Some(expr.clone()));
+                context.eval(&expr)
+            }))
+        };
         self.0.extend(name, value.clone(), Some(expr));
         Ok(value)
     }
@@ -134,9 +143,14 @@ impl<I: Identifier + Clone + 'static> Context<I> {
                 let value = value.clone();
                 let name = name.clone();
                 let lambda = move |argument: Value| {
-                    let mut closure = closure.clone();
-                    closure.0.extend(name.clone(), argument, None);
-                    closure.eval(&value)
+                    let closure = closure.clone();
+                    let name = name.clone();
+                    let value = value.clone();
+                    Ok(Value::Thunk(Rc::new(move |_| {
+                        let mut closure = closure.clone();
+                        closure.0.extend(name.clone(), argument.clone(), None);
+                        closure.eval(&value)
+                    })))
                 };
                 Ok(Value::Function(Rc::new(lambda)))
             }
