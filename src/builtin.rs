@@ -20,6 +20,15 @@ pub enum Builtin {
     UInt(u64),
     Float(f64),
 
+    /* Control flow */
+    Condition,
+    Pair,
+    First,
+    Second,
+    Left,
+    Right,
+    Case,
+
     /* Boolean Operators */
     Not,
     And,
@@ -70,6 +79,13 @@ impl Builtin {
             Int(v) => Ok(Value::Int(*v)),
             UInt(v) => Ok(Value::UInt(*v)),
             Float(v) => Ok(Value::Float(*v)),
+            Condition => Ok(condition()),
+            Pair => Ok(pair()),
+            First => Ok(first()),
+            Second => Ok(second()),
+            Left => Ok(left()),
+            Right => Ok(right()),
+            Case => Ok(case()),
             Not => Ok(unary_op(|a: bool| Ok(Value::Bool(!a)))),
             And => Ok(binary_op(|a: bool, b: bool| Ok(Value::Bool(a && b)))),
             Or => Ok(binary_op(|a: bool, b: bool| Ok(Value::Bool(a || b)))),
@@ -104,6 +120,13 @@ impl fmt::Display for Builtin {
             Int(v) => write!(f, "{}", v),
             UInt(v) => write!(f, "{}u", v),
             Float(v) => write!(f, "{}f", v),
+            Condition => write!(f, "if"),
+            Pair => write!(f, "pair"),
+            First => write!(f, "first"),
+            Second => write!(f, "second"),
+            Left => write!(f, "left"),
+            Right => write!(f, "right"),
+            Case => write!(f, "case"),
             Not => write!(f, "not"),
             And => write!(f, "and"),
             Or => write!(f, "or"),
@@ -196,6 +219,14 @@ impl Into<Value> for Number {
     }
 }
 
+fn simple_op(f: impl Sized + 'static + Fn(Value) -> Result<Value>) -> Value {
+    Value::Function(Rc::new(move |a| f(a)))
+}
+
+fn infallable_op(f: impl Sized + 'static + Fn(Value) -> Value) -> Value {
+    Value::Function(Rc::new(move |a| Ok(f(a))))
+}
+
 fn unary_op<A>(f: impl Sized + 'static + Fn(A) -> Result<Value>) -> Value
 where
     Value: TryInto<A, Error = Error>,
@@ -281,4 +312,97 @@ fn binary_unsigned_op(op: impl Fn(u64, u64) -> u64 + 'static) -> Value {
     };
 
     binary_op(cast)
+}
+
+/// Branching conditional (if)
+fn condition() -> Value {
+    unary_op(|cond: bool| {
+        if cond {
+            Ok(infallable_op(|t: Value| {
+                let t = t.clone();
+                infallable_op(move |_: Value| {
+                    t.clone()
+                })
+            }))
+        } else {
+            Ok(infallable_op(|_: Value| {
+                infallable_op(|f: Value| {
+                    f
+                })
+            }))
+        }
+    })
+}
+
+/// Construct a pair
+fn pair() -> Value {
+    infallable_op(|first: Value| {
+        let first = first.clone();
+        infallable_op(move |second: Value| {
+            Value::Pair(Rc::new(first.clone()), Rc::new(second))
+        })
+    })
+}
+
+/// Taking the first value of a pair
+fn first() -> Value {
+    simple_op(|value: Value| {
+        match value {
+            Value::Pair(first, _) => Ok(first.as_ref().clone()),
+            _ => bail!("{} is not a pair", value),
+        }
+    })
+}
+
+/// Taking the second value of a pair
+fn second() -> Value {
+    simple_op(|value: Value| {
+        match value {
+            Value::Pair(_, second) => Ok(second.as_ref().clone()),
+            value => bail!("{} is not a pair", value),
+        }
+    })
+}
+
+/// Construct the left part of a sum
+fn left() -> Value {
+    infallable_op(|left: Value| {
+        Value::Left(Rc::new(left))
+    })
+}
+
+/// Construct the right part of a sum
+fn right() -> Value {
+    infallable_op(|right: Value| {
+        Value::Right(Rc::new(right))
+    })
+}
+
+/// Handling cases of a sum
+fn case() -> Value {
+    simple_op(|value: Value| {
+        match value {
+            Value::Left(value) => {
+                Ok(infallable_op(move |left: Value| {
+                    let left = left.clone();
+                    let value = value.as_ref().clone();
+                    simple_op(move |_: Value| {
+                        let left = left.clone();
+                        let value = value.clone();
+                        (left.as_function()?)(value)
+                    })
+                }))
+            }
+            Value::Right(value) => {
+                Ok(infallable_op(move |_: Value| {
+                    let value = value.as_ref().clone();
+                    simple_op(move |right: Value| {
+                        let value = value.clone();
+                        (right.as_function()?)(value)
+                    })
+                }))
+            }
+            value => bail!("{} is not a sum", value),
+        }
+    })
 }
