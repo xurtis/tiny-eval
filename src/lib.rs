@@ -8,3 +8,4 @@ pub use expr::construct::*;
 pub use expr::{Expr, Context, eval};
 pub use builtin::{val, error, Builtin};
 pub use Builtin::*;
+pub use data::Value;
