@@ -6,6 +6,39 @@ fn main() -> Result<()> {
     fn index(i: impl Into<Expr>, xs: impl Into<Expr>) -> Expr {
         apply(apply("index", i), xs)
     };
+
+    // let
+    //   fib := let
+    //     fib := a -> b -> let
+    //       next := (+ a b)
+    //       in
+    //         (pair next (fib b next))
+    //     in
+    //       (pair 1 (pair 1 (fib 1 1)))
+    //   in let
+    //     index := i -> xs ->
+    //       if (= i 0)
+    //         (first xs)
+    //         (index (- i 1) (second xs))
+    //   in
+    //     (pair
+    //       (index 0 fib)
+    //       (pair
+    //         (index 1 fib)
+    //         (pair
+    //           (index 2 fib)
+    //           (pair
+    //             (index 3 fib)
+    //             (pair
+    //               (index 4 fib)
+    //               (index 5 fib)
+    //             )
+    //           )
+    //         )
+    //       )
+    //     )
+    // = (1 * 1 * 2 * 3 * 5 * 8)
+
     let expr = bind(
         "fib", bind(
             "fib", lambda("a", lambda("b", bind(
