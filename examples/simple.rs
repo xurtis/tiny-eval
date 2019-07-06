@@ -1,13 +1,4 @@
-mod data;
-mod builtin;
-mod expr;
-
-pub type Result<T> = ::std::result::Result<T, ::failure::Error>;
-
-pub use expr::construct::*;
-pub use expr::{Expr, Context};
-pub use builtin::*;
-
+use tiny_eval::*;
 
 fn main() -> Result<()> {
     let mut context = Context::new();

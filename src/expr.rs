@@ -9,6 +9,10 @@ use crate::Result;
 use crate::builtin::Builtin;
 use crate::data::Value;
 
+pub fn eval<I: Identifier + Clone + 'static>(expr: impl Into<Expr<I>>) -> Result<Value> {
+    Context::new().eval(&expr.into())
+}
+
 /// Types that can be used as identifiers in expressions
 pub trait Identifier: ::std::hash::Hash + Eq + ::std::fmt::Display {}
 
@@ -117,7 +121,7 @@ impl<I: Identifier + Clone + 'static> Context<I> {
     }
 
     /// Evaluate an expression within a context
-    fn eval(&self, expr: &Expr<I>) -> Result<Value> {
+    pub fn eval(&self, expr: &Expr<I>) -> Result<Value> {
         match expr {
             Expr::Builtin(b) => b.eval(),
             Expr::Apply(function, argument) => {

@@ -48,7 +48,6 @@ pub enum Builtin {
     BinaryNot,
     BinaryExclusiveOr,
 }
-pub use Builtin::*;
 
 macro_rules! binary_numeric {
     ($impl:expr) => {
@@ -63,7 +62,8 @@ macro_rules! binary_unsigned {
 }
 
 impl Builtin {
-    pub fn eval(&self) -> Result<Value> {
+    pub(crate) fn eval(&self) -> Result<Value> {
+        use Builtin::*;
         match self {
             Error(msg) => Ok(error(msg.clone())),
             Bool(v) => Ok(Value::Bool(*v)),
