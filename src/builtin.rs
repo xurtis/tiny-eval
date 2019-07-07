@@ -13,6 +13,8 @@ use crate::Result;
 pub enum Builtin {
     /// Produce an error when evaluated
     Error(String),
+    /// Replace an value that produces an error with another value
+    Except,
 
     /* Value builtins */
     Unit,
@@ -92,6 +94,7 @@ pub mod construct {
     }
 
 
+    auto_apply!(Except => except(v, e));
     auto_apply!(Condition => condition(cond, t, f));
     auto_apply!(Pair => pair(first, second));
     auto_apply!(First => first(pair));
@@ -142,6 +145,7 @@ impl Builtin {
         use Builtin::*;
         match self {
             Error(msg) => Ok(error(msg.clone())),
+            Except => Ok(except()),
             Unit => Ok(Value::Unit),
             Bool(v) => Ok(Value::Bool(*v)),
             Int(v) => Ok(Value::Int(*v)),
@@ -183,6 +187,7 @@ impl fmt::Display for Builtin {
         use Builtin::*;
         match self {
             Error(e) => write!(f, "(error {:?})", e),
+            Except => write!(f, "except"),
             Unit => write!(f, "()"),
             Bool(true) => write!(f, "true"),
             Bool(false) => write!(f, "false"),
@@ -389,6 +394,19 @@ fn binary_unsigned_op(op: impl Fn(u64, u64) -> u64 + 'static) -> Value {
     binary_op(cast)
 }
 
+/// Simple exception handling
+fn except() -> Value {
+    infallable_op(|default| {
+        let default = default.clone();
+        Value::Except(Rc::new(move |v| {
+            match v {
+                Err(_) => Ok(default.clone()),
+                v => v
+            }
+        }))
+    })
+}
+
 /// Branching conditional (if)
 fn condition() -> Value {
     unary_op(|cond: bool| {
@@ -464,7 +482,7 @@ fn case() -> Value {
                     simple_op(move |_: Value| {
                         let left = left.clone();
                         let value = value.clone();
-                        (left.as_function()?)(value)
+                        (left.as_function()?)(Ok(value))
                     })
                 }))
             }
@@ -473,7 +491,7 @@ fn case() -> Value {
                     let value = value.as_ref().clone();
                     simple_op(move |right: Value| {
                         let value = value.clone();
-                        (right.as_function()?)(value)
+                        (right.as_function()?)(Ok(value))
                     })
                 }))
             }

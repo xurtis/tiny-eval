@@ -175,7 +175,7 @@ impl<I: Identifier + Clone + 'static> Context<I> {
             Expr::Builtin(b) => b.eval(),
             Expr::Apply(function, argument) => {
                 let function = self.eval(function)?;
-                let argument = self.eval(argument)?;
+                let argument = self.eval(argument);
                 (function.as_function()?)(argument)
             }
             Expr::Lambda(name, value) => {

@@ -19,6 +19,7 @@ pub enum Value {
     Left(Rc<Value>),
     Right(Rc<Value>),
     Function(Rc<dyn Fn(Value) -> Result<Value>>),
+    Except(Rc<dyn Fn(Result<Value>) -> Result<Value>>),
     Thunk(Rc<dyn Fn(Value) -> Result<Value>>),
 }
 
@@ -128,19 +129,31 @@ impl Value {
     }
 
     /// Take the value as a function.
-    pub fn as_function(mut self) -> Result<Rc<dyn Fn(Value) -> Result<Value>>> {
+    pub fn as_function(mut self) -> Result<Rc<dyn Fn(Result<Value>) -> Result<Value>>> {
         self = self.finalise()?;
 
-        match self {
-            Value::Function(f) => Ok(f),
-            value => bail!("'{}' is not a function", value),
+        if !self.can_call() {
+            bail!("'{}' is not a function", self)
         }
+
+        let call = move |value: Result<Value>| {
+            let callable = self.clone();
+            match (callable, value) {
+                (Value::Function(lambda), Ok(value)) => lambda(value),
+                (Value::Except(except), error @ Err(_)) => except(error),
+                (Value::Except(except), Ok(value)) => except(value.finalise_recursive()),
+                (_, error @ Err(_)) => error,
+                _ => unreachable!(),
+            }
+        };
+
+        Ok(Rc::new(call))
     }
 
     /// Call a function with a set of arguments to finalise it.
     pub fn call(mut self, args: impl Into<Vec<Value>>) -> Result<Value> {
         for arg in args.into() {
-            self = (self.as_function()?)(arg)?;
+            self = (self.as_function()?)(Ok(arg))?;
         }
         self = self.finalise()?;
 
@@ -159,7 +172,16 @@ impl Value {
             Left(l) => l.can_render(),
             Right(r) => r.can_render(),
             Function(_) => false,
+            Except(_) => false,
             Thunk(_) => false,
+        }
+    }
+
+    pub fn can_call(&self) -> bool {
+        use Value::*;
+        match self {
+            Function(_) | Except(_) => true,
+            _ => false,
         }
     }
 }
@@ -175,10 +197,17 @@ impl fmt::Display for Value {
             UInt(u) => write!(f, "{}u", u),
             Float(v) => write!(f, "{}f", v),
             Pair(l, r) => write!(f, "({} * {})", l, r),
-            Left(l) => write!(f, "({} + ?)", l),
-            Right(r) => write!(f, "(? + {})", r),
-            Function(_) => write!(f, "? -> ?"),
-            Thunk(_) => write!(f, "?"),
+            Left(l) => write!(f, "({} + V)", l),
+            Right(r) => write!(f, "(V + {})", r),
+            Function(_) => write!(f, "V -> V"),
+            Except(_) => write!(f, "E -> V"),
+            thunk @ Thunk(_) => {
+                if let Ok(thunk) = thunk.clone().finalise() {
+                    fmt::Display::fmt(&thunk, f)
+                } else {
+                    write!(f, "E")
+                }
+            }
         }
     }
 }
