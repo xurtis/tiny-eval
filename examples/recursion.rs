@@ -1,11 +1,7 @@
 use tiny_eval::*;
 
-type Expr = tiny_eval::Expr<&'static str>;
-
 fn main() -> Result<()> {
-    fn index(i: impl Into<Expr>, xs: impl Into<Expr>) -> Expr {
-        apply(apply("index", i), xs)
-    };
+    apply_expr!(index(i, xs));
 
     // let
     //   fib := let

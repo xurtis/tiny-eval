@@ -57,6 +57,46 @@ pub mod construct {
         let expr = Rc::new(expr.into());
         Expr::Bind { name, value, expr }
     }
+
+    #[macro_export]
+    macro_rules! apply_expr {
+        (@apply($applied:expr): ) => {
+            $applied
+        };
+        (@apply($applied:expr): $arg:ident) => {
+            apply($applied, $arg)
+        };
+        (@apply($applied:expr): $arg:ident, $($rest:ident),*) => {
+            apply_expr!(@apply(apply($applied, $arg)): $($rest),*)
+        };
+        ($(#[$doc:meta])* $name:ident($($arg:ident),*)) => {
+            $(#[$doc])*
+            fn $name(
+                $($arg: impl Into<$crate::Expr<&'static str>>),*
+            ) -> $crate::Expr<&'static str> {
+                let function = $crate::Expr::<&'static str>::from(stringify!($name));
+                apply_expr!(@apply(function): $($arg),*)
+            }
+        };
+        ($(#[$doc:meta])* pub $name:ident($($arg:ident),*)) => {
+            $(#[$doc])*
+            pub fn $name(
+                $($arg: impl Into<$crate::Expr<&'static str>>),*
+            ) -> $crate::Expr<&'static str> {
+                let function = $crate::Expr::<&'static str>::from(stringify!($name));
+                apply_expr!(@apply(function): $($arg),*)
+            }
+        };
+        ($(#[$doc:meta])* pub($($scope:tt)*) $name:ident($($arg:ident),*)) => {
+            $(#[$doc])*
+            pub($($scope)*) fn $name(
+                $($arg: impl Into<$crate::Expr<&'static str>>),*
+            ) -> $crate::Expr<&'static str> {
+                let function = $crate::Expr::<&'static str>::from(stringify!($name));
+                apply_expr!(@apply(function): $($arg),*)
+            }
+        };
+    }
 }
 
 impl<I: Identifier> fmt::Display for Expr<I> {

@@ -5,13 +5,17 @@ fn main() -> Result<()> {
 
     context.extend("a", val(6.2))?;
     context.extend("b", val(9.8))?;
-    context.extend("plus", lambda("x", apply(Add, Expr::Variable("x"))))?;
+    context.extend("plus", lambda("x", lambda("y", add("x", "y"))))?;
+
+    apply_expr!(plus(a, b));
+    apply_expr!(inc(a));
+    apply_expr!(double(a));
 
     let expr = bind(
-        "inc", apply(Add, val(1)),
+        "inc", apply(Builtin::Add, val(1)),
         bind(
-            "double", apply(Multiply, val(2)),
-            apply("double", apply(apply("plus", apply("inc", "a")), "b"))
+            "double", apply(Builtin::Multiply, val(2)),
+            double(plus(inc("a"), "b")),
         ),
     );
 
