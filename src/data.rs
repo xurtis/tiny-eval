@@ -1,12 +1,10 @@
 /// Data held during evaluation
 
-use crate::Result;
-
 use std::rc::Rc;
 use std::fmt;
 use std::convert::TryInto;
 
-use failure::{bail, Error};
+use crate::{Result, Error};
 
 #[derive(Clone)]
 pub enum Value {
@@ -59,7 +57,7 @@ impl TryInto<bool> for Value {
     fn try_into(self) -> Result<bool> {
         match self.finalise()? {
             Value::Bool(b) => Ok(b),
-            other => bail!("{} is not a bool", other),
+            other => Err(Error::NotBool(other)),
         }
     }
 }
@@ -70,7 +68,7 @@ impl TryInto<i64> for Value {
     fn try_into(self) -> Result<i64> {
         match self.finalise()? {
             Value::Int(i) => Ok(i),
-            other => bail!("{} is not an integer", other),
+            other => Err(Error::NotInt(other)),
         }
     }
 }
@@ -81,7 +79,7 @@ impl TryInto<u64> for Value {
     fn try_into(self) -> Result<u64> {
         match self.finalise()? {
             Value::UInt(u) => Ok(u),
-            other => bail!("{} is not an unsigned integer", other),
+            other => Err(Error::NotUInt(other)),
         }
     }
 }
@@ -92,7 +90,7 @@ impl TryInto<f64> for Value {
     fn try_into(self) -> Result<f64> {
         match self.finalise()? {
             Value::Float(f) => Ok(f),
-            other => bail!("{} is not an float", other),
+            other => Err(Error::NotFloat(other)),
         }
     }
 }
@@ -133,7 +131,7 @@ impl Value {
         self = self.finalise()?;
 
         if !self.can_call() {
-            bail!("'{}' is not a function", self)
+            return Err(Error::NotFunction(self));
         }
 
         let call = move |value: Result<Value>| {

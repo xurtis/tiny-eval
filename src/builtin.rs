@@ -4,15 +4,13 @@ use std::fmt;
 use std::rc::Rc;
 use std::convert::{TryInto, TryFrom};
 
-use failure::{Error, bail};
-
 use crate::data::Value;
-use crate::Result;
+use crate::{Error, Result};
 
 #[derive(Debug, Clone)]
 pub enum Builtin {
     /// Produce an error when evaluated
-    Error(String),
+    Raise,
     /// Replace an value that produces an error with another value
     Except,
 
@@ -94,6 +92,7 @@ pub mod construct {
     }
 
 
+    auto_apply!(Raise => raise(v));
     auto_apply!(Except => except(v, e));
     auto_apply!(Condition => condition(cond, t, f));
     auto_apply!(Pair => pair(first, second));
@@ -144,7 +143,7 @@ impl Builtin {
     pub(crate) fn eval(&self) -> Result<Value> {
         use Builtin::*;
         match self {
-            Error(msg) => Ok(error(msg.clone())),
+            Raise => Ok(raise()),
             Except => Ok(except()),
             Unit => Ok(Value::Unit),
             Bool(v) => Ok(Value::Bool(*v)),
@@ -186,7 +185,7 @@ impl fmt::Display for Builtin {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Builtin::*;
         match self {
-            Error(e) => write!(f, "(error {:?})", e),
+            Raise => write!(f, "raise"),
             Except => write!(f, "except"),
             Unit => write!(f, "()"),
             Bool(true) => write!(f, "true"),
@@ -264,10 +263,6 @@ pub fn val(value: impl Into<Builtin>) -> Builtin {
     value.into()
 }
 
-pub fn error(e: String) -> Value {
-    Value::Thunk(Rc::new(move |_| bail!("{}", e)))
-}
-
 #[derive(Debug, Clone, Copy)]
 enum Number {
     Int(i64),
@@ -283,7 +278,7 @@ impl TryFrom<Value> for Number {
             Value::Int(i) => Ok(Number::Int(i)),
             Value::UInt(u) => Ok(Number::UInt(u)),
             Value::Float(u) => Ok(Number::Float(u)),
-            other => bail!("{} is not numeric", other),
+            other => Err(Error::NotNumeric(other)),
         }
     }
 }
@@ -310,7 +305,6 @@ fn infallable_op(f: impl Sized + 'static + Fn(Value) -> Value) -> Value {
 fn unary_op<A>(f: impl Sized + 'static + Fn(A) -> Result<Value>) -> Value
 where
     Value: TryInto<A, Error = Error>,
-    <Value as TryInto<A>>::Error: Send + Sync + 'static,
 {
     let cast = move |a: Value| f(a.try_into()?);
     Value::Function(Rc::new(cast))
@@ -320,9 +314,7 @@ fn binary_op<A, B>(f: impl Sized + 'static + Fn(A, B) -> Result<Value>) -> Value
 where
     A: Clone + 'static,
     Value: TryInto<A, Error = Error>,
-    <Value as TryInto<A>>::Error: Send + Sync + 'static,
     Value: TryInto<B, Error = Error>,
-    <Value as TryInto<B>>::Error: Send + Sync + 'static,
 {
     let f = Rc::new(f);
     unary_op(move |a: A| {
@@ -407,6 +399,12 @@ fn except() -> Value {
     })
 }
 
+pub fn raise() -> Value {
+    simple_op(|value| {
+        Err(Error::Raise(value))
+    })
+}
+
 /// Branching conditional (if)
 fn condition() -> Value {
     unary_op(|cond: bool| {
@@ -442,7 +440,7 @@ fn first() -> Value {
     simple_op(|value: Value| {
         match value.finalise()? {
             Value::Pair(first, _) => Ok(first.as_ref().clone()),
-            value => bail!("{} is not a pair", value),
+            value => Err(Error::NotPair(value)),
         }
     })
 }
@@ -452,7 +450,7 @@ fn second() -> Value {
     simple_op(|value: Value| {
         match value.finalise()? {
             Value::Pair(_, second) => Ok(second.as_ref().clone()),
-            value => bail!("{} is not a pair", value),
+            value => Err(Error::NotPair(value)),
         }
     })
 }
@@ -495,7 +493,7 @@ fn case() -> Value {
                     })
                 }))
             }
-            value => bail!("{} is not a sum", value),
+            value => Err(Error::NotSum(value)),
         }
     })
 }

@@ -1,5 +1,7 @@
 use tiny_eval::*;
 
+type Result<T> = ::std::result::Result<T, Box<dyn ::std::error::Error>>;
+
 use std::io::{stdout, Stdout, Write};
 use std::fmt::{Write as FmtWrite, self};
 

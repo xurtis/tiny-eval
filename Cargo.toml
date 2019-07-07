@@ -7,6 +7,3 @@ edition = "2018"
 [lib]
 name = "tiny_eval"
 path = "src/lib.rs"
-
-[dependencies]
-failure = "0.1.5"
