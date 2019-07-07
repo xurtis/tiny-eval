@@ -186,6 +186,7 @@ impl<I: Identifier + Clone + 'static> Context<I> {
                     let closure = closure.clone();
                     let name = name.clone();
                     let value = value.clone();
+                    let argument = argument.finalise()?;
                     Ok(Value::Thunk(Rc::new(move |_| {
                         let mut closure = closure.clone();
                         closure.0.extend(name.clone(), argument.clone(), None);
