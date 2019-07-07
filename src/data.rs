@@ -10,6 +10,7 @@ use failure::{bail, Error};
 
 #[derive(Clone)]
 pub enum Value {
+    Unit,
     Bool(bool),
     Int(i64),
     UInt(u64),
@@ -19,6 +20,12 @@ pub enum Value {
     Right(Rc<Value>),
     Function(Rc<dyn Fn(Value) -> Result<Value>>),
     Thunk(Rc<dyn Fn(Value) -> Result<Value>>),
+}
+
+impl From<()> for Value {
+    fn from(_: ()) -> Self {
+        Value::Unit
+    }
 }
 
 impl From<bool> for Value {
@@ -143,6 +150,7 @@ impl Value {
     pub fn can_render(&self) -> bool {
         use Value::*;
         match self {
+            Unit => true,
             Bool(_) => true,
             Int(_) => true,
             UInt(_) => true,
@@ -160,6 +168,7 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Value::*;
         match self {
+            Unit => write!(f, "()"),
             Bool(true) => write!(f, "true"),
             Bool(false) => write!(f, "false"),
             Int(i) => write!(f, "{}", i),

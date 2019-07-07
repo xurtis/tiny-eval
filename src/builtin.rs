@@ -15,6 +15,7 @@ pub enum Builtin {
     Error(String),
 
     /* Value builtins */
+    Unit,
     Bool(bool),
     Int(i64),
     UInt(u64),
@@ -141,6 +142,7 @@ impl Builtin {
         use Builtin::*;
         match self {
             Error(msg) => Ok(error(msg.clone())),
+            Unit => Ok(Value::Unit),
             Bool(v) => Ok(Value::Bool(*v)),
             Int(v) => Ok(Value::Int(*v)),
             UInt(v) => Ok(Value::UInt(*v)),
@@ -181,6 +183,7 @@ impl fmt::Display for Builtin {
         use Builtin::*;
         match self {
             Error(e) => write!(f, "(error {:?})", e),
+            Unit => write!(f, "()"),
             Bool(true) => write!(f, "true"),
             Bool(false) => write!(f, "false"),
             Int(v) => write!(f, "{}", v),
@@ -245,6 +248,12 @@ builtin_value!(u64 => UInt(u64));
 builtin_value!(f32 => Float(f64));
 builtin_value!(f64 => Float(f64));
 builtin_value!(bool => Bool);
+
+impl From<()> for Builtin {
+    fn from(_: ()) -> Self {
+        Builtin::Unit
+    }
+}
 
 pub fn val(value: impl Into<Builtin>) -> Builtin {
     value.into()
