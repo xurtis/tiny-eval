@@ -5,8 +5,8 @@ type Result<T> = ::std::result::Result<T, Box<dyn ::std::error::Error>>;
 fn main() -> Result<()> {
     let mut context = Context::new();
 
-    context.extend("a", val(6.2))?;
-    context.extend("b", val(9.8))?;
+    context.extend("a", value(6.2))?;
+    context.extend("b", value(9.8))?;
     context.extend("plus", lambda("x", lambda("y", add("x", "y"))))?;
 
     apply_expr!(plus(a, b));
@@ -14,9 +14,9 @@ fn main() -> Result<()> {
     apply_expr!(double(a));
 
     let expr = bind(
-        "inc", apply(Builtin::Add, val(1)),
+        "inc", apply(Builtin::Add, value(1)),
         bind(
-            "double", apply(Builtin::Multiply, val(2)),
+            "double", apply(Builtin::Multiply, value(2)),
             double(plus(inc("a"), "b")),
         ),
     );

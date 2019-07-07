@@ -43,27 +43,30 @@ fn main() -> Result<()> {
                 "next", add("a", "b"),
                 pair("next", apply(apply("fib", "b"), "next")),
             ))),
-            pair(val(1), pair(val(1), apply(apply("fib", val(1)), val(1)))),
+            pair(value(1), pair(value(1), apply(apply("fib", value(1)), value(1)))),
         ),
         bind(
             "index", lambda("i", lambda("xs",
                 condition(
-                    equal("i", val(0)),
+                    equal("i", value(0)),
                     first("xs"),
-                    index(subtract("i", val(1)), second("xs")),
+                    index(subtract("i", value(1)), second("xs")),
                 )
             )),
             pair(
-                index(val(0), "fib"),
+                index(value(0), "fib"),
                 pair(
-                    index(val(1), "fib"),
+                    index(value(1), "fib"),
                     pair(
-                        index(val(2), "fib"),
+                        index(value(2), "fib"),
                         pair(
-                            index(val(3), "fib"),
+                            index(value(3), "fib"),
                             pair(
-                                index(val(4), "fib"),
-                                index(val(5), "fib"),
+                                index(value(4), "fib"),
+                                pair(
+                                    index(value(5), "fib"),
+                                    value(()),
+                                ),
                             ),
                         ),
                     ),

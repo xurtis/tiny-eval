@@ -29,7 +29,7 @@ fn main() -> Result<()> {
             "next", add("a", "b"),
             pair("next", fib("b", "next")),
         ))),
-        pair(val(1), pair(val(1), fib(val(1), val(1)))),
+        pair(value(1), pair(value(1), fib(value(1), value(1)))),
     );
     let mut stdout = FlushFormatter::new();
 

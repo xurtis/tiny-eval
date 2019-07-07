@@ -5,7 +5,7 @@ type Result<T> = ::std::result::Result<T, Box<dyn ::std::error::Error>>;
 fn main() -> Result<()> {
     let mut context = Context::new();
 
-    let get_a = multiply(except(val(7), catch(lambda("x", divide("x", val(4))), "a")), val(11));
+    let get_a = multiply(except(value(7), catch(lambda("x", divide("x", value(4))), "a")), value(11));
 
     println!("context = {}", context);
     print!("{}", get_a);
@@ -16,7 +16,7 @@ fn main() -> Result<()> {
         result => panic!("{} != 77", result),
     }
 
-    context.extend("a", val(5))?;
+    context.extend("a", value(5))?;
 
     println!("context = {}", context);
     print!("{}", get_a);
@@ -27,7 +27,7 @@ fn main() -> Result<()> {
         result => panic!("{} != 55", result),
     }
 
-    context.extend("a", raise(val(12)))?;
+    context.extend("a", raise(value(12)))?;
 
     println!("context = {}", context);
     print!("{}", get_a);

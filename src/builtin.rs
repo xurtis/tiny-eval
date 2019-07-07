@@ -264,7 +264,7 @@ impl From<()> for Builtin {
     }
 }
 
-pub fn val(value: impl Into<Builtin>) -> Builtin {
+pub fn value(value: impl Into<Builtin>) -> Builtin {
     value.into()
 }
 

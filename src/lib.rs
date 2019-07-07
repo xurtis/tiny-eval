@@ -5,7 +5,7 @@ mod expr;
 pub use data::Value;
 pub use expr::construct::*;
 pub use expr::{Expr, Context, Identifier, IdentifierView, eval};
-pub use builtin::{val, Builtin};
+pub use builtin::{value, Builtin};
 pub use builtin::construct::*;
 
 use std::rc::Rc;
