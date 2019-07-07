@@ -13,6 +13,8 @@ pub enum Builtin {
     Raise,
     /// Replace an value that produces an error with another value
     Except,
+    /// Handle an exception raised within the program
+    Catch,
 
     /* Value builtins */
     Unit,
@@ -94,6 +96,7 @@ pub mod construct {
 
     auto_apply!(Raise => raise(v));
     auto_apply!(Except => except(v, e));
+    auto_apply!(Catch => catch(v, e));
     auto_apply!(Condition => condition(cond, t, f));
     auto_apply!(Pair => pair(first, second));
     auto_apply!(First => first(pair));
@@ -145,6 +148,7 @@ impl Builtin {
         match self {
             Raise => Ok(raise()),
             Except => Ok(except()),
+            Catch => Ok(catch()),
             Unit => Ok(Value::Unit),
             Bool(v) => Ok(Value::Bool(*v)),
             Int(v) => Ok(Value::Int(*v)),
@@ -187,6 +191,7 @@ impl fmt::Display for Builtin {
         match self {
             Raise => write!(f, "raise"),
             Except => write!(f, "except"),
+            Catch => write!(f, "catch"),
             Unit => write!(f, "()"),
             Bool(true) => write!(f, "true"),
             Bool(false) => write!(f, "false"),
@@ -399,7 +404,22 @@ fn except() -> Value {
     })
 }
 
-pub fn raise() -> Value {
+/// Catch errors raised within the program
+fn catch() -> Value {
+    infallable_op(|handler| {
+        let handler = handler.clone();
+        Value::Except(Rc::new(move |v| {
+            match v {
+                Err(Error::Raise(error)) => {
+                    (handler.clone().as_function()?)(Ok(error))
+                }
+                v => v
+            }
+        }))
+    })
+}
+
+fn raise() -> Value {
     simple_op(|value| {
         Err(Error::Raise(value))
     })
