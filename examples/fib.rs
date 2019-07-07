@@ -19,18 +19,20 @@ impl FmtWrite for FlushFormatter {
     }
 }
 
+apply_expr!(fib(a, b));
+
 fn main() -> Result<()> {
     let fib = bind(
         "fib", lambda("a", lambda("b", bind(
             "next", add("a", "b"),
-            pair("next", apply(apply("fib", "b"), "next")),
+            pair("next", fib("b", "next")),
         ))),
-        pair(val(1), pair(val(1), apply(apply("fib", val(1)), val(1)))),
+        pair(val(1), pair(val(1), fib(val(1), val(1)))),
     );
     let mut stdout = FlushFormatter::new();
 
     write!(stdout, "{}", fib)?;
-    writeln!(stdout, "= {}", eval(fib)?)?;
+    writeln!(stdout, " = {}", eval(fib)?)?;
 
     Ok(())
 }
