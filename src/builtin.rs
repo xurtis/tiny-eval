@@ -22,6 +22,7 @@ pub enum Builtin {
     Int(i64),
     UInt(u64),
     Float(f64),
+    Function(Function),
 
     /* Control flow */
     Condition,
@@ -61,6 +62,21 @@ pub enum Builtin {
     BinaryExclusiveOr,
 }
 
+#[derive(Clone)]
+pub struct Function(&'static str, Rc<dyn Fn(Value) -> Result<Value> + 'static>);
+
+impl fmt::Debug for Function {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 pub mod construct {
     use super::Builtin::*;
     use crate::expr::{Expr, Identifier, construct::apply};
@@ -92,7 +108,6 @@ pub mod construct {
             }
         };
     }
-
 
     auto_apply!(Raise => raise(v));
     auto_apply!(Except => except(v, e));
@@ -154,6 +169,7 @@ impl Builtin {
             Int(v) => Ok(Value::Int(*v)),
             UInt(v) => Ok(Value::UInt(*v)),
             Float(v) => Ok(Value::Float(*v)),
+            Function(self::Function(_, lambda)) => Ok(Value::Function(lambda.clone())),
             Condition => Ok(condition()),
             Pair => Ok(pair()),
             First => Ok(first()),
@@ -198,6 +214,7 @@ impl fmt::Display for Builtin {
             Int(v) => write!(f, "{}", v),
             UInt(v) => write!(f, "{}u", v),
             Float(v) => write!(f, "{}f", v),
+            Function(function) => write!(f, "{}", function),
             Condition => write!(f, "if"),
             Pair => write!(f, "pair"),
             First => write!(f, "first"),
@@ -266,6 +283,10 @@ impl From<()> for Builtin {
 
 pub fn value(value: impl Into<Builtin>) -> Builtin {
     value.into()
+}
+
+pub fn function(name: &'static str, lambda: impl Fn(Value) -> Result<Value> + 'static) -> Builtin {
+    Builtin::Function(Function(name, Rc::new(lambda)))
 }
 
 #[derive(Debug, Clone, Copy)]

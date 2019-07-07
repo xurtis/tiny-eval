@@ -5,7 +5,7 @@ mod expr;
 pub use data::Value;
 pub use expr::construct::*;
 pub use expr::{Expr, Context, Identifier, IdentifierView, eval};
-pub use builtin::{value, Builtin};
+pub use builtin::{value, function, Builtin};
 pub use builtin::construct::*;
 
 use std::rc::Rc;
@@ -23,6 +23,7 @@ pub enum Error {
     NotSum(Value),
     NotFunction(Value),
     NotBound(Rc<dyn IdentifierView>),
+    External(Rc<dyn ::std::error::Error>),
     Raise(Value),
 }
 
@@ -39,6 +40,7 @@ impl fmt::Display for Error {
             NotSum(value) => write!(f, "{} is not a sum", value),
             NotFunction(value) => write!(f, "{} is not a function", value),
             NotBound(identifier) => write!(f, "{} is not bound", identifier),
+            External(error) => write!(f, "{}", error),
             Raise(value) => write!(f, "{} raised as error by program", value),
         }
     }
