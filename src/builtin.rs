@@ -8,7 +8,7 @@ use crate::data::Value;
 use crate::{Error, Result};
 
 #[derive(Debug, Clone)]
-pub enum Builtin {
+pub enum Builtin<I> {
     /// Produce an error when evaluated
     Raise,
     /// Replace an value that produces an error with another value
@@ -22,7 +22,7 @@ pub enum Builtin {
     Int(i64),
     UInt(u64),
     Float(f64),
-    Function(Function),
+    Function(Function<I>),
 
     /* Control flow */
     Condition,
@@ -63,15 +63,15 @@ pub enum Builtin {
 }
 
 #[derive(Clone)]
-pub struct Function(&'static str, Rc<dyn Fn(Value) -> Result<Value> + 'static>);
+pub struct Function<I>(I, Rc<dyn Fn(Value) -> Result<Value> + 'static>);
 
-impl fmt::Debug for Function {
+impl<I: fmt::Debug> fmt::Debug for Function<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{:?}", self.0)
     }
 }
 
-impl fmt::Display for Function {
+impl<I: fmt::Display> fmt::Display for Function<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -157,7 +157,7 @@ macro_rules! binary_unsigned {
     }
 }
 
-impl Builtin {
+impl<I> Builtin<I> {
     pub(crate) fn eval(&self) -> Result<Value> {
         use Builtin::*;
         match self {
@@ -201,7 +201,7 @@ impl Builtin {
     }
 }
 
-impl fmt::Display for Builtin {
+impl<I: fmt::Display> fmt::Display for Builtin<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Builtin::*;
         match self {
@@ -248,14 +248,14 @@ impl fmt::Display for Builtin {
 
 macro_rules! builtin_value {
     ($from:ty => $var:ident) => {
-        impl From<$from> for Builtin {
+        impl<I> From<$from> for Builtin<I> {
             fn from(value: $from) -> Self {
                 Builtin::$var(value)
             }
         }
     };
     ($from:ty => $var:ident($to:ty)) => {
-        impl From<$from> for Builtin {
+        impl<I> From<$from> for Builtin<I> {
             fn from(value: $from) -> Self {
                 Builtin::$var(value as $to)
             }
@@ -275,17 +275,17 @@ builtin_value!(f32 => Float(f64));
 builtin_value!(f64 => Float(f64));
 builtin_value!(bool => Bool);
 
-impl From<()> for Builtin {
+impl<I> From<()> for Builtin<I> {
     fn from(_: ()) -> Self {
         Builtin::Unit
     }
 }
 
-pub fn value(value: impl Into<Builtin>) -> Builtin {
+pub fn value<I>(value: impl Into<Builtin<I>>) -> Builtin<I> {
     value.into()
 }
 
-pub fn function(name: &'static str, lambda: impl Fn(Value) -> Result<Value> + 'static) -> Builtin {
+pub fn function<I>(name: I, lambda: impl Fn(Value) -> Result<Value> + 'static) -> Builtin<I> {
     Builtin::Function(Function(name, Rc::new(lambda)))
 }
 

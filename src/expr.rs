@@ -23,7 +23,7 @@ impl<I: Eq + IdentifierView> Identifier for I {}
 
 #[derive(Clone, Debug)]
 pub enum Expr<I: Identifier> {
-    Builtin(Builtin),
+    Builtin(Builtin<I>),
     Apply(Rc<Expr<I>>, Rc<Expr<I>>),
     Lambda(I, Rc<Expr<I>>),
     Bind {
@@ -122,8 +122,8 @@ impl<I: Identifier> From<I> for Expr<I> {
     }
 }
 
-impl<I: Identifier> From<Builtin> for Expr<I> {
-    fn from(value: Builtin) -> Self {
+impl<I: Identifier> From<Builtin<I>> for Expr<I> {
+    fn from(value: Builtin<I>) -> Self {
         Expr::Builtin(value)
     }
 }
