@@ -290,7 +290,7 @@ impl<I: Identifier> fmt::Display for Binding<I> {
                     fmt::Display::fmt(tail, f)?;
                 }
             }
-            _ => {}
+            Empty => write!(f, "{{}}")?,
         }
 
         Ok(())
