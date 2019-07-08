@@ -4,57 +4,57 @@ use std::rc::Rc;
 use std::fmt;
 use std::convert::TryInto;
 
-use crate::{Result, Error};
+use crate::{Identifier, Result, ValueResult, Error};
 
 #[derive(Clone)]
-pub enum Value {
+pub enum Value<I> {
     Unit,
     Bool(bool),
     Int(i64),
     UInt(u64),
     Float(f64),
-    Pair(Rc<Value>, Rc<Value>),
-    Left(Rc<Value>),
-    Right(Rc<Value>),
-    Function(Rc<dyn Fn(Value) -> Result<Value>>),
-    Except(Rc<dyn Fn(Result<Value>) -> Result<Value>>),
-    Thunk(Rc<dyn Fn(Value) -> Result<Value>>),
+    Pair(Rc<Value<I>>, Rc<Value<I>>),
+    Left(Rc<Value<I>>),
+    Right(Rc<Value<I>>),
+    Function(Rc<dyn Fn(Value<I>) -> ValueResult<I>>),
+    Except(Rc<dyn Fn(ValueResult<I>) -> ValueResult<I>>),
+    Thunk(Rc<dyn Fn(Value<I>) -> ValueResult<I>>),
 }
 
-impl From<()> for Value {
+impl<I> From<()> for Value<I> {
     fn from(_: ()) -> Self {
         Value::Unit
     }
 }
 
-impl From<bool> for Value {
+impl<I> From<bool> for Value<I> {
     fn from(b: bool) -> Self {
         Value::Bool(b)
     }
 }
 
-impl From<i64> for Value {
+impl<I> From<i64> for Value<I> {
     fn from(i: i64) -> Self {
         Value::Int(i)
     }
 }
 
-impl From<u64> for Value {
+impl<I> From<u64> for Value<I> {
     fn from(u: u64) -> Self {
         Value::UInt(u)
     }
 }
 
-impl From<f64> for Value {
+impl<I> From<f64> for Value<I> {
     fn from(f: f64) -> Self {
         Value::Float(f)
     }
 }
 
-impl TryInto<bool> for Value {
-    type Error = Error;
+impl<I: Identifier> TryInto<bool> for Value<I> {
+    type Error = Error<I>;
 
-    fn try_into(self) -> Result<bool> {
+    fn try_into(self) -> Result<bool, I> {
         match self.finalise()? {
             Value::Bool(b) => Ok(b),
             other => Err(Error::NotBool(other)),
@@ -62,10 +62,10 @@ impl TryInto<bool> for Value {
     }
 }
 
-impl TryInto<i64> for Value {
-    type Error = Error;
+impl<I: Identifier> TryInto<i64> for Value<I> {
+    type Error = Error<I>;
 
-    fn try_into(self) -> Result<i64> {
+    fn try_into(self) -> Result<i64, I> {
         match self.finalise()? {
             Value::Int(i) => Ok(i),
             other => Err(Error::NotInt(other)),
@@ -73,10 +73,10 @@ impl TryInto<i64> for Value {
     }
 }
 
-impl TryInto<u64> for Value {
-    type Error = Error;
+impl<I: Identifier> TryInto<u64> for Value<I> {
+    type Error = Error<I>;
 
-    fn try_into(self) -> Result<u64> {
+    fn try_into(self) -> Result<u64, I> {
         match self.finalise()? {
             Value::UInt(u) => Ok(u),
             other => Err(Error::NotUInt(other)),
@@ -84,10 +84,10 @@ impl TryInto<u64> for Value {
     }
 }
 
-impl TryInto<f64> for Value {
-    type Error = Error;
+impl<I: Identifier> TryInto<f64> for Value<I> {
+    type Error = Error<I>;
 
-    fn try_into(self) -> Result<f64> {
+    fn try_into(self) -> Result<f64, I> {
         match self.finalise()? {
             Value::Float(f) => Ok(f),
             other => Err(Error::NotFloat(other)),
@@ -95,9 +95,9 @@ impl TryInto<f64> for Value {
     }
 }
 
-impl Value {
+impl<I: Identifier> Value<I> {
     /// Reduce a lazy thunk down to a final value.
-    pub fn finalise(mut self) -> Result<Value> {
+    pub fn finalise(mut self) -> ValueResult<I> {
         while let Value::Thunk(thunk) = self {
             let value = Value::Thunk(thunk.clone());
             self = thunk(value)?;
@@ -107,7 +107,7 @@ impl Value {
     }
 
     /// Recursively reducy a data structure with lazy thunks to a final value.
-    pub fn finalise_recursive(self) -> Result<Value> {
+    pub fn finalise_recursive(self) -> ValueResult<I> {
         use Value::*;
 
         let value = match self {
@@ -127,14 +127,14 @@ impl Value {
     }
 
     /// Take the value as a function.
-    pub fn as_function(mut self) -> Result<Rc<dyn Fn(Result<Value>) -> Result<Value>>> {
+    pub fn as_function(mut self) -> Result<Rc<dyn Fn(ValueResult<I>) -> ValueResult<I>>, I> {
         self = self.finalise()?;
 
         if !self.can_call() {
             return Err(Error::NotFunction(self));
         }
 
-        let call = move |value: Result<Value>| {
+        let call = move |value: ValueResult<I>| {
             let callable = self.clone();
             match (callable, value) {
                 (Value::Function(lambda), Ok(value)) => lambda(value),
@@ -149,7 +149,7 @@ impl Value {
     }
 
     /// Call a function with a set of arguments to finalise it.
-    pub fn call(mut self, args: impl Into<Vec<Value>>) -> Result<Value> {
+    pub fn call(mut self, args: impl Into<Vec<Value<I>>>) -> ValueResult<I> {
         for arg in args.into() {
             self = (self.as_function()?)(Ok(arg))?;
         }
@@ -184,7 +184,7 @@ impl Value {
     }
 }
 
-impl fmt::Display for Value {
+impl<I: Identifier> fmt::Display for Value<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Value::*;
         match self {
@@ -210,8 +210,21 @@ impl fmt::Display for Value {
     }
 }
 
-impl fmt::Debug for Value {
+impl<I: fmt::Debug> fmt::Debug for Value<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(self, f)
+        use Value::*;
+        match self {
+            Unit => write!(f, "Unit"),
+            Bool(b) => write!(f, "Bool({:?})", b),
+            Int(i) => write!(f, "Int({:?})", i),
+            UInt(u) => write!(f, "UInt({:?})", u),
+            Float(v) => write!(f, "Float({:?})", v),
+            Pair(l, r) => write!(f, "Pair({:?}, {:?})", l, r),
+            Left(l) => write!(f, "Left({:?})", l),
+            Right(r) => write!(f, "Right({:?})", r),
+            Function(_) => write!(f, "Function"),
+            Except(_) => write!(f, "Except"),
+            Thunk(_) => write!(f, "Thunk"),
+        }
     }
 }

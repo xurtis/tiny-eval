@@ -3,11 +3,11 @@
 use std::rc::Rc;
 use std::fmt;
 
-use crate::{Error, Result};
+use crate::{Error, ValueResult};
 use crate::builtin::Builtin;
 use crate::data::Value;
 
-pub fn eval<I: Identifier + Clone + 'static>(expr: impl Into<Expr<I>>) -> Result<Value> {
+pub fn eval<I: Identifier>(expr: Expr<I>) -> ValueResult<I> {
     Context::new().eval(&expr.into())
 }
 
@@ -17,12 +17,12 @@ pub trait IdentifierView: ::std::fmt::Display + ::std::fmt::Debug {}
 impl<I: ::std::fmt::Display + ::std::fmt::Debug> IdentifierView for I {}
 
 /// Types that can be used as identifiers in expressions
-pub trait Identifier: Eq + IdentifierView {}
+pub trait Identifier: 'static + Clone + Eq + IdentifierView {}
 
-impl<I: Eq + IdentifierView> Identifier for I {}
+impl<I: 'static + Clone + Eq + IdentifierView> Identifier for I {}
 
 #[derive(Clone, Debug)]
-pub enum Expr<I: Identifier> {
+pub enum Expr<I> {
     Builtin(Builtin<I>),
     Apply(Rc<Expr<I>>, Rc<Expr<I>>),
     Lambda(I, Rc<Expr<I>>),
@@ -102,7 +102,7 @@ pub mod construct {
     }
 }
 
-impl<I: Identifier> fmt::Display for Expr<I> {
+impl<I: fmt::Display> fmt::Display for Expr<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Expr::Builtin(b) => write!(f, "{}", b),
@@ -116,28 +116,28 @@ impl<I: Identifier> fmt::Display for Expr<I> {
     }
 }
 
-impl<I: Identifier> From<I> for Expr<I> {
+impl<I> From<I> for Expr<I> {
     fn from(ident: I) -> Self {
         Expr::Variable(ident)
     }
 }
 
-impl<I: Identifier> From<Builtin<I>> for Expr<I> {
+impl<I> From<Builtin<I>> for Expr<I> {
     fn from(value: Builtin<I>) -> Self {
         Expr::Builtin(value)
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct Context<I: Identifier>(Binding<I>);
+pub struct Context<I>(Binding<I>);
 
-impl<I: Identifier> Default for Context<I> {
+impl<I> Default for Context<I> {
     fn default() -> Self {
         Context(Binding::new())
     }
 }
 
-impl<I: Identifier + Clone + 'static> Context<I> {
+impl<I: Identifier> Context<I> {
     /// Create a new empty context
     pub fn new() -> Self {
         Default::default()
@@ -146,7 +146,7 @@ impl<I: Identifier + Clone + 'static> Context<I> {
     /// Add a binding expression to the context
     ///
     /// Returns the evaluated result of the added expression.
-    pub fn extend(&mut self, name: I, expr: impl Into<Expr<I>>) -> Result<Value> {
+    pub fn extend(&mut self, name: I, expr: impl Into<Expr<I>>) -> ValueResult<I> {
         let expr = expr.into();
         let value = {
             let context = self.clone();
@@ -168,12 +168,12 @@ impl<I: Identifier + Clone + 'static> Context<I> {
     }
 
     /// Find a named value within a context
-    pub fn find(&self, name: impl AsRef<I>) -> Option<&Value> {
+    pub fn find(&self, name: impl AsRef<I>) -> Option<&Value<I>> {
         self.0.find(name.as_ref())
     }
 
     /// Evaluate an expression within a context
-    pub fn eval(&self, expr: &Expr<I>) -> Result<Value> {
+    pub fn eval(&self, expr: &Expr<I>) -> ValueResult<I> {
         match expr {
             Expr::Builtin(b) => b.eval(),
             Expr::Apply(function, argument) => {
@@ -185,7 +185,7 @@ impl<I: Identifier + Clone + 'static> Context<I> {
                 let closure = self.clone();
                 let value = value.clone();
                 let name = name.clone();
-                let lambda = move |argument: Value| {
+                let lambda = move |argument: Value<I>| {
                     let closure = closure.clone();
                     let name = name.clone();
                     let value = value.clone();
@@ -204,7 +204,7 @@ impl<I: Identifier + Clone + 'static> Context<I> {
                 context.eval(expr)
             }
             Expr::Variable(name) => {
-                let value = self.0.find(name).ok_or(Error::NotBound(Rc::new(name.clone())))?;
+                let value = self.0.find(name).ok_or(Error::NotBound(name.clone()))?;
                 Ok(value.clone())
             }
         }
@@ -219,17 +219,17 @@ impl<I: Identifier> fmt::Display for Context<I> {
 
 /// Linked list of bindings (more efficient to copy)
 #[derive(Debug, Clone)]
-enum Binding<I: Identifier> {
+enum Binding<I> {
     Empty,
     Bind {
         name: I,
-        value: Value,
+        value: Value<I>,
         expr: Option<Rc<Expr<I>>>,
         tail: Rc<Binding<I>>,
     }
 }
 
-impl<I: Identifier> Binding<I> {
+impl<I> Binding<I> {
     fn new() -> Self {
         Binding::Empty
     }
@@ -246,7 +246,7 @@ impl<I: Identifier> Binding<I> {
     /// Add a binding expression to the context
     ///
     /// Returns the evaluated result of the added expression.
-    fn extend(&mut self, name: I, value: Value, expr: Option<Expr<I>>) {
+    fn extend(&mut self, name: I, value: Value<I>, expr: Option<Expr<I>>) {
         let expr = expr.map(Rc::new);
         let mut tail = Binding::Empty;
         ::std::mem::swap(&mut tail, self);
@@ -265,7 +265,7 @@ impl<I: Identifier> Binding<I> {
     }
 
     /// Find a named value within a context
-    fn find(&self, name: &I) -> Option<&Value> {
+    fn find(&self, name: &I) -> Option<&Value<I>> {
         use Binding::*;
         match self {
             Bind { name: bound, value, .. } if name == bound => Some(value),

@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::convert::{TryInto, TryFrom};
 
 use crate::data::Value;
-use crate::{Error, Result};
+use crate::{Identifier, Error, Result, ValueResult};
 
 #[derive(Debug, Clone)]
 pub enum Builtin<I> {
@@ -63,7 +63,7 @@ pub enum Builtin<I> {
 }
 
 #[derive(Clone)]
-pub struct Function<I>(I, Rc<dyn Fn(Value) -> Result<Value> + 'static>);
+pub struct Function<I>(I, Rc<dyn Fn(Value<I>) -> ValueResult<I> + 'static>);
 
 impl<I: fmt::Debug> fmt::Debug for Function<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -157,8 +157,8 @@ macro_rules! binary_unsigned {
     }
 }
 
-impl<I> Builtin<I> {
-    pub(crate) fn eval(&self) -> Result<Value> {
+impl<I: Identifier> Builtin<I> {
+    pub(crate) fn eval(&self) -> ValueResult<I> {
         use Builtin::*;
         match self {
             Raise => Ok(raise()),
@@ -281,11 +281,14 @@ impl<I> From<()> for Builtin<I> {
     }
 }
 
-pub fn value<I>(value: impl Into<Builtin<I>>) -> Builtin<I> {
+pub fn value<I: Identifier>(value: impl Into<Builtin<I>>) -> Builtin<I> {
     value.into()
 }
 
-pub fn function<I>(name: I, lambda: impl Fn(Value) -> Result<Value> + 'static) -> Builtin<I> {
+pub fn function<I: Identifier>(
+    name: I,
+    lambda: impl Fn(Value<I>) -> ValueResult<I> + 'static
+) -> Builtin<I> {
     Builtin::Function(Function(name, Rc::new(lambda)))
 }
 
@@ -296,10 +299,10 @@ enum Number {
     Float(f64),
 }
 
-impl TryFrom<Value> for Number {
-    type Error = Error;
+impl<I: Identifier> TryFrom<Value<I>> for Number {
+    type Error = Error<I>;
 
-    fn try_from(value: Value) -> Result<Number> {
+    fn try_from(value: Value<I>) -> Result<Number, I> {
         match value.finalise()? {
             Value::Int(i) => Ok(Number::Int(i)),
             Value::UInt(u) => Ok(Number::UInt(u)),
@@ -309,8 +312,8 @@ impl TryFrom<Value> for Number {
     }
 }
 
-impl Into<Value> for Number {
-    fn into(self) -> Value {
+impl<I> Into<Value<I>> for Number {
+    fn into(self) -> Value<I> {
         use Number::*;
         match self {
             Int(i) => Value::Int(i),
@@ -320,27 +323,29 @@ impl Into<Value> for Number {
     }
 }
 
-fn simple_op(f: impl Sized + 'static + Fn(Value) -> Result<Value>) -> Value {
+fn simple_op<I: Identifier>(f: impl Sized + 'static + Fn(Value<I>) -> ValueResult<I>) -> Value<I> {
     Value::Function(Rc::new(move |a| f(a)))
 }
 
-fn infallable_op(f: impl Sized + 'static + Fn(Value) -> Value) -> Value {
+fn infallable_op<I: Identifier>(f: impl Sized + 'static + Fn(Value<I>) -> Value<I>) -> Value<I> {
     Value::Function(Rc::new(move |a| Ok(f(a))))
 }
 
-fn unary_op<A>(f: impl Sized + 'static + Fn(A) -> Result<Value>) -> Value
+fn unary_op<I, A>(f: impl Sized + 'static + Fn(A) -> ValueResult<I>) -> Value<I>
 where
-    Value: TryInto<A, Error = Error>,
+    I: Identifier,
+    Value<I>: TryInto<A, Error = Error<I>>,
 {
-    let cast = move |a: Value| f(a.try_into()?);
+    let cast = move |a: Value<I>| f(a.try_into()?);
     Value::Function(Rc::new(cast))
 }
 
-fn binary_op<A, B>(f: impl Sized + 'static + Fn(A, B) -> Result<Value>) -> Value
+fn binary_op<I, A, B>(f: impl Sized + 'static + Fn(A, B) -> ValueResult<I>) -> Value<I>
 where
+    I: Identifier,
     A: Clone + 'static,
-    Value: TryInto<A, Error = Error>,
-    Value: TryInto<B, Error = Error>,
+    Value<I>: TryInto<A, Error = Error<I>>,
+    Value<I>: TryInto<B, Error = Error<I>>,
 {
     let f = Rc::new(f);
     unary_op(move |a: A| {
@@ -351,11 +356,11 @@ where
     })
 }
 
-fn binary_numeric_op<I: Into<Value>, U: Into<Value>, F: Into<Value>>(
-    int: impl Fn(i64, i64) -> I + 'static,
+fn binary_numeric_op<I: Identifier, N: Into<Value<I>>, U: Into<Value<I>>, F: Into<Value<I>>>(
+    int: impl Fn(i64, i64) -> N + 'static,
     uint: impl Fn(u64, u64) -> U + 'static,
     float: impl Fn(f64, f64) -> F + 'static,
-) -> Value {
+) -> Value<I> {
     use Number::*;
 
     let cast = move |a: Number, b: Number| {
@@ -376,7 +381,7 @@ fn binary_numeric_op<I: Into<Value>, U: Into<Value>, F: Into<Value>>(
     binary_op(cast)
 }
 
-fn unary_unsigned_op(op: impl Fn(u64) -> u64 + 'static) -> Value {
+fn unary_unsigned_op<I: Identifier>(op: impl Fn(u64) -> u64 + 'static) -> Value<I> {
     use Number::*;
 
     let cast = move |a: Number| {
@@ -391,7 +396,7 @@ fn unary_unsigned_op(op: impl Fn(u64) -> u64 + 'static) -> Value {
     unary_op(cast)
 }
 
-fn binary_unsigned_op(op: impl Fn(u64, u64) -> u64 + 'static) -> Value {
+fn binary_unsigned_op<I: Identifier>(op: impl Fn(u64, u64) -> u64 + 'static) -> Value<I> {
     use Number::*;
 
     let cast = move |a: Number, b: Number| {
@@ -413,7 +418,7 @@ fn binary_unsigned_op(op: impl Fn(u64, u64) -> u64 + 'static) -> Value {
 }
 
 /// Simple exception handling
-fn except() -> Value {
+fn except<I: Identifier>() -> Value<I> {
     infallable_op(|default| {
         let default = default.clone();
         Value::Except(Rc::new(move |v| {
@@ -426,7 +431,7 @@ fn except() -> Value {
 }
 
 /// Catch errors raised within the program
-fn catch() -> Value {
+fn catch<I: Identifier>() -> Value<I> {
     infallable_op(|handler| {
         let handler = handler.clone();
         Value::Except(Rc::new(move |v| {
@@ -440,25 +445,25 @@ fn catch() -> Value {
     })
 }
 
-fn raise() -> Value {
+fn raise<I: Identifier>() -> Value<I> {
     simple_op(|value| {
         Err(Error::Raise(value))
     })
 }
 
 /// Branching conditional (if)
-fn condition() -> Value {
+fn condition<I: Identifier>() -> Value<I> {
     unary_op(|cond: bool| {
         if cond {
-            Ok(infallable_op(|t: Value| {
+            Ok(infallable_op(|t: Value<I>| {
                 let t = t.clone();
-                infallable_op(move |_: Value| {
+                infallable_op(move |_: Value<I>| {
                     t.clone()
                 })
             }))
         } else {
-            Ok(infallable_op(|_: Value| {
-                infallable_op(|f: Value| {
+            Ok(infallable_op(|_: Value<I>| {
+                infallable_op(|f: Value<I>| {
                     f
                 })
             }))
@@ -467,18 +472,18 @@ fn condition() -> Value {
 }
 
 /// Construct a pair
-fn pair() -> Value {
-    infallable_op(|first: Value| {
+fn pair<I: Identifier>() -> Value<I> {
+    infallable_op(|first: Value<I>| {
         let first = first.clone();
-        infallable_op(move |second: Value| {
+        infallable_op(move |second: Value<I>| {
             Value::Pair(Rc::new(first.clone()), Rc::new(second))
         })
     })
 }
 
 /// Taking the first value of a pair
-fn first() -> Value {
-    simple_op(|value: Value| {
+fn first<I: Identifier>() -> Value<I> {
+    simple_op(|value: Value<I>| {
         match value.finalise()? {
             Value::Pair(first, _) => Ok(first.as_ref().clone()),
             value => Err(Error::NotPair(value)),
@@ -487,8 +492,8 @@ fn first() -> Value {
 }
 
 /// Taking the second value of a pair
-fn second() -> Value {
-    simple_op(|value: Value| {
+fn second<I: Identifier>() -> Value<I> {
+    simple_op(|value: Value<I>| {
         match value.finalise()? {
             Value::Pair(_, second) => Ok(second.as_ref().clone()),
             value => Err(Error::NotPair(value)),
@@ -497,28 +502,28 @@ fn second() -> Value {
 }
 
 /// Construct the left part of a sum
-fn left() -> Value {
-    infallable_op(|left: Value| {
+fn left<I: Identifier>() -> Value<I> {
+    infallable_op(|left: Value<I>| {
         Value::Left(Rc::new(left))
     })
 }
 
 /// Construct the right part of a sum
-fn right() -> Value {
-    infallable_op(|right: Value| {
+fn right<I: Identifier>() -> Value<I> {
+    infallable_op(|right: Value<I>| {
         Value::Right(Rc::new(right))
     })
 }
 
 /// Handling cases of a sum
-fn case() -> Value {
-    simple_op(|value: Value| {
+fn case<I: Identifier>() -> Value<I> {
+    simple_op(|value: Value<I>| {
         match value.finalise()? {
             Value::Left(value) => {
-                Ok(infallable_op(move |left: Value| {
+                Ok(infallable_op(move |left: Value<I>| {
                     let left = left.clone();
                     let value = value.as_ref().clone();
-                    simple_op(move |_: Value| {
+                    simple_op(move |_: Value<I>| {
                         let left = left.clone();
                         let value = value.clone();
                         (left.as_function()?)(Ok(value))
@@ -526,9 +531,9 @@ fn case() -> Value {
                 }))
             }
             Value::Right(value) => {
-                Ok(infallable_op(move |_: Value| {
+                Ok(infallable_op(move |_: Value<I>| {
                     let value = value.as_ref().clone();
-                    simple_op(move |right: Value| {
+                    simple_op(move |right: Value<I>| {
                         let value = value.clone();
                         (right.as_function()?)(Ok(value))
                     })

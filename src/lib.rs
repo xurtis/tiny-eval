@@ -4,7 +4,7 @@ mod expr;
 
 pub use data::Value;
 pub use expr::construct::*;
-pub use expr::{Expr, Context, Identifier, IdentifierView, eval};
+pub use expr::{Identifier, Expr, Context, eval};
 pub use builtin::{value, function, Builtin};
 pub use builtin::construct::*;
 
@@ -13,21 +13,21 @@ use std::fmt;
 
 /// Errors produced during evaluation
 #[derive(Debug, Clone)]
-pub enum Error {
-    NotBool(Value),
-    NotInt(Value),
-    NotUInt(Value),
-    NotFloat(Value),
-    NotNumeric(Value),
-    NotPair(Value),
-    NotSum(Value),
-    NotFunction(Value),
-    NotBound(Rc<dyn IdentifierView>),
+pub enum Error<I> {
+    NotBool(Value<I>),
+    NotInt(Value<I>),
+    NotUInt(Value<I>),
+    NotFloat(Value<I>),
+    NotNumeric(Value<I>),
+    NotPair(Value<I>),
+    NotSum(Value<I>),
+    NotFunction(Value<I>),
+    NotBound(I),
     External(Rc<dyn ::std::error::Error>),
-    Raise(Value),
+    Raise(Value<I>),
 }
 
-impl fmt::Display for Error {
+impl<I: Identifier> fmt::Display for Error<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Error::*;
         match self {
@@ -46,6 +46,8 @@ impl fmt::Display for Error {
     }
 }
 
-impl ::std::error::Error for Error {}
+impl<I: Identifier> ::std::error::Error for Error<I> {}
 
-pub type Result<T> = ::std::result::Result<T, Error>;
+pub type Result<T, I> = ::std::result::Result<T, Error<I>>;
+pub type ValueResult<I> = Result<Value<I>, I>;
+

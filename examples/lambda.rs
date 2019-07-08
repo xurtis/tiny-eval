@@ -16,8 +16,8 @@ impl fmt::Display for PowError {
 impl ::std::error::Error for PowError {}
 
 fn main() -> Result<()> {
-    let pow = function("pow", |base: Value| {
-        Ok(Value::Function(Rc::new(move |exponent: Value| {
+    let pow = function("pow", |base: Value<&'static str>| {
+        Ok(Value::Function(Rc::new(move |exponent: Value<&'static str>| {
             match (base.clone(), exponent) {
                 (Value::Int(mut base), Value::UInt(mut exponent)) => {
                     let mut power = 1;
