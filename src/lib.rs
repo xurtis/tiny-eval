@@ -1,6 +1,10 @@
 mod data;
+mod data_new;
+pub mod binding;
 mod builtin;
 mod expr;
+pub mod lambda;
+pub mod typing;
 
 pub use data::Value;
 pub use expr::construct::*;
@@ -43,6 +47,12 @@ impl<I: Identifier> fmt::Display for Error<I> {
             External(error) => write!(f, "{}", error),
             Raise(value) => write!(f, "{} raised as error by program", value),
         }
+    }
+}
+
+impl<I: Identifier> From<::std::convert::Infallible> for Error<I> {
+    fn from(error: ::std::convert::Infallible) -> Self {
+        Error::External(Rc::new(error))
     }
 }
 
