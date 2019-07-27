@@ -2,6 +2,7 @@
 
 use crate::data_new::{Value, Cell};
 use crate::lambda;
+use crate::typing::{Numeric, Integer};
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -11,6 +12,147 @@ use std::rc::Rc;
 use failure::{Error, format_err};
 
 type Result<T> = ::std::result::Result<T, Error>;
+
+#[derive(Debug, Clone)]
+pub enum Operator {
+    /// `Roll : T (rec t. T t) -> rec t. T t`
+    Roll,
+    /// `Unroll : rec t. T t -> T (rec t. T t)`
+    Unroll,
+    /// `Raise : forall a, b. a -> b`
+    Raise,
+    /// `Except : forall a. (forall b. b -> a) -> a -> a`
+    Except,
+    /// `Pair : forall a, b. a -> b -> (a, b)`
+    Pair,
+    /// `First : forall a, b. (a, b) -> a`
+    First,
+    /// `Second : forall a, b. (a, b) -> b`
+    Second,
+    /// `Element n : forall a[0..n], b. (a[0], (..., (a[n - 1], b))) -> b`
+    ///
+    /// Allows for quickly selecting an element of a deeply nested pair by effectively performing n
+    /// stacked selects on the right.
+    Element(u64),
+    /// `Index : UInt -> forall a. rec t. () + (a, t) -> () + a`
+    Index,
+    /// `Left : forall a, b. a -> a + b`
+    Left,
+    /// `Right : forall a, b. b -> a + b`
+    Right,
+    /// `Case : forall a, b, c. (a -> c) -> (b -> c) -> (a + b) -> c`
+    Case,
+    /// `SkipLeft n : forall a[0..n], b, c. (forall a. a -> c) -> (b -> c) -> (a[0] + (... + (a[n - 1] + b))) -> c`
+    ///
+    /// Allows for quickly matching deeply nested sum values to match a single specific case by
+    /// discarding effectively performing n stacked matches on the right.
+    SkipLeft(u64),
+    /// `Not : Bool -> Bool`
+    Not,
+    /// `And : Bool -> Bool -> Bool`
+    And,
+    /// `Or : Bool -> Bool -> Bool`
+    Or,
+    /// `Greater : Numeric n => n -> n -> n`
+    Greater(Numeric),
+    /// `GreaterEqual : Numeric n => n -> n -> Bool`
+    GreaterOrEqual(Numeric),
+    /// `Less : Numeric n => n -> n -> Bool`
+    Less(Numeric),
+    /// `LessEqual : Numeric n => n -> n -> Bool`
+    LessOrEqual(Numeric),
+    /// `Equal : Numeric n => n -> n -> n`
+    Equal(Numeric),
+    /// `NotEqual : Numeric n => n -> n -> n`
+    NotEqual(Numeric),
+    /// `Add : Numeric n => n -> n -> n`
+    Add(Numeric),
+    /// `Subtract : Numeric n => n -> n -> n`
+    Subtract(Numeric),
+    /// `Multiply : Numeric n => n -> n -> n`
+    Multiply(Numeric),
+    /// `Divide : Numeric n => n -> n -> n`
+    Divide(Numeric),
+    /// `Remainder : Numeric n => n -> n -> n`
+    Remainder(Numeric),
+    /// `ShiftLeft : Integer i => i -> i`
+    ShiftLeft(Integer),
+    /// `ShiftRight : Integer i => i -> i`
+    ShiftRight(Integer),
+    /// `BitwiseNot : Integer i => i -> i`
+    BitwiseNot(Integer),
+    /// `BitwiseAnd : Integer i => i -> i`
+    BitwiseAnd(Integer),
+    /// `BitwiseOr : Integer i => i -> i`
+    BitwiseOr(Integer),
+    /// `BitwiseExclusiveOr : Integer i => i -> i`
+    BitwiseExclusiveOr(Integer),
+    /// `Signed : Integer i => i -> Int`
+    Signed(Integer),
+    /// `Unsigned : Integer i => i -> UInt`
+    Unsigned(Integer),
+    /// `Float : Integer i => i -> Float`
+    Float(Integer),
+    /// `Ceiling : Float -> Int`
+    Ceiling,
+    /// `Floor : Float -> Int`
+    Floor,
+    /// `RoundUp : Float -> Int`
+    ///
+    /// Rounds so that exact halves increase in magnitude (0.5 -> 1 and -0.5 -> -1).
+    RoundUp,
+    /// `RoundDown : Float -> Int`
+    ///
+    /// Rounds so that exact halves decrease in magnitude (0.5 -> 0 and -0.5 -> 0).
+    RoundDown,
+}
+
+impl Into<lambda::Operator> for Operator {
+    fn into(self) -> lambda::Operator {
+        match self {
+            Operator::Roll => lambda::Operator::Roll,
+            Operator::Unroll => lambda::Operator::Unroll,
+            Operator::Raise => lambda::Operator::Raise,
+            Operator::Except => lambda::Operator::Except,
+            Operator::Pair => lambda::Operator::Pair,
+            Operator::First => lambda::Operator::First,
+            Operator::Second => lambda::Operator::Second,
+            Operator::Element(count) => lambda::Operator::Element(count),
+            Operator::Index => lambda::Operator::Index,
+            Operator::Left => lambda::Operator::Left,
+            Operator::Right => lambda::Operator::Right,
+            Operator::Case => lambda::Operator::Case,
+            Operator::SkipLeft(count) => lambda::Operator::SkipLeft(count),
+            Operator::Not => lambda::Operator::Not,
+            Operator::And => lambda::Operator::And,
+            Operator::Or => lambda::Operator::Or,
+            Operator::Greater(numeric) => lambda::Operator::Greater(numeric),
+            Operator::GreaterOrEqual(numeric) => lambda::Operator::GreaterOrEqual(numeric),
+            Operator::Less(numeric) => lambda::Operator::Less(numeric),
+            Operator::LessOrEqual(numeric) => lambda::Operator::LessOrEqual(numeric),
+            Operator::Equal(numeric) => lambda::Operator::Equal(numeric),
+            Operator::NotEqual(numeric) => lambda::Operator::NotEqual(numeric),
+            Operator::Add(numeric) => lambda::Operator::Add(numeric),
+            Operator::Subtract(numeric) => lambda::Operator::Subtract(numeric),
+            Operator::Multiply(numeric) => lambda::Operator::Multiply(numeric),
+            Operator::Divide(numeric) => lambda::Operator::Divide(numeric),
+            Operator::Remainder(numeric) => lambda::Operator::Remainder(numeric),
+            Operator::ShiftLeft(integer) => lambda::Operator::ShiftLeft(integer),
+            Operator::ShiftRight(integer) => lambda::Operator::ShiftRight(integer),
+            Operator::BitwiseNot(integer) => lambda::Operator::BitwiseNot(integer),
+            Operator::BitwiseAnd(integer) => lambda::Operator::BitwiseAnd(integer),
+            Operator::BitwiseOr(integer) => lambda::Operator::BitwiseOr(integer),
+            Operator::BitwiseExclusiveOr(integer) => lambda::Operator::BitwiseExclusiveOr(integer),
+            Operator::Signed(integer) => lambda::Operator::Signed(integer),
+            Operator::Unsigned(integer) => lambda::Operator::Unsigned(integer),
+            Operator::Float(integer) => lambda::Operator::Float(integer),
+            Operator::Ceiling => lambda::Operator::Ceiling,
+            Operator::Floor => lambda::Operator::Floor,
+            Operator::RoundUp => lambda::Operator::RoundUp,
+            Operator::RoundDown => lambda::Operator::RoundDown,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Expr<I> {
@@ -23,7 +165,7 @@ pub enum Expr<I> {
     /// Builtin value
     Value(Value),
     /// Builtin operator
-    Operator(lambda::Operator),
+    Operator(Operator),
 }
 
 enum VariableBind {
@@ -80,7 +222,7 @@ impl<I: Eq + fmt::Display> Expr<I> {
                 Ok(expr)
             }
             Expr::Value(value) => Ok(lambda::Expr::Value(value.clone())),
-            Expr::Operator(op) => Ok(lambda::Expr::Operator(op.clone())),
+            Expr::Operator(op) => Ok(lambda::Expr::Operator(op.clone().into())),
         }
     }
 }
