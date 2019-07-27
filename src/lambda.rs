@@ -32,6 +32,12 @@ pub enum Operator {
     Roll,
     /// `Unroll : rec t. T t -> T (rec t. T t)`
     Unroll,
+    /// `Fold : forall f. (forall a, b. (a -> b) -> f a -> f b) -> FoldOver f`
+    Fold,
+    /// `FoldOver f : forall a. (f a -> a) -> FoldWith f a`
+    FoldOver(Value),
+    /// `FoldWith f a : rec t. f t -> a`
+    FoldWith(Value, Value),
     /// `Raise : forall a, b. a -> b`
     Raise,
     /// `Except : forall a. (forall b. b -> a) -> ExceptWith a`

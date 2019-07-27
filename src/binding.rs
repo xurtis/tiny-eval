@@ -19,6 +19,8 @@ pub enum Operator {
     Roll,
     /// `Unroll : rec t. T t -> T (rec t. T t)`
     Unroll,
+    /// `Fold : forall f, a. (forall a, b. (a -> b) -> f a -> f b) -> (f a -> a) -> rec t. f t -> a`
+    Fold,
     /// `Raise : forall a, b. a -> b`
     Raise,
     /// `Except : forall a. (forall b. b -> a) -> a -> a`
@@ -112,6 +114,7 @@ impl Into<lambda::Operator> for Operator {
         match self {
             Operator::Roll => lambda::Operator::Roll,
             Operator::Unroll => lambda::Operator::Unroll,
+            Operator::Fold => lambda::Operator::Fold,
             Operator::Raise => lambda::Operator::Raise,
             Operator::Except => lambda::Operator::Except,
             Operator::Pair => lambda::Operator::Pair,
