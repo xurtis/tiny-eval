@@ -1,6 +1,6 @@
 //! Binding language
 
-use crate::data_new::{Value, Cell};
+use crate::data_new::{Value, Cell, new_cell};
 use crate::lambda::{Operator, self};
 
 use std::collections::{HashMap, HashSet};
@@ -12,14 +12,18 @@ use std::rc::Rc;
 pub enum Expr<I> {
     /// Binding of an expression to a name
     Bind(Rc<I>, Cell<Expr<I>>, Cell<Expr<I>>),
-    /// Named variable reference
-    Variable(Rc<I>),
     /// Lambda variable binding
     Lambda(Rc<I>, Cell<Expr<I>>),
+    /// Application of a function
+    Apply(Cell<Expr<I>>, Cell<Expr<I>>),
+    /// Named variable reference
+    Variable(Rc<I>),
     /// Builtin value
     Value(Value),
     /// Builtin operator
     Operator(Operator),
+    /// Exception handling
+    Except(Cell<Expr<I>>, Cell<Expr<I>>),
 }
 
 enum VariableBind {
@@ -27,20 +31,20 @@ enum VariableBind {
     Expression(lambda::Expr),
 }
 
-impl<I: Eq + fmt::Display> Expr<I> {
-    pub fn eval(&self) -> Result<Value> {
-        self.unbind().and_then(|expr| expr.eval())
+impl<I: Eq + Hash + fmt::Display + Clone> Expr<I> {
+    pub fn eval(&self) -> Result<Value, I> {
+        Ok(self.unbind()?.eval()?)
     }
 
     /// Translate into a pure lambda expression by removing all bindings.
     ///
     /// May fail if there are any free variables.
-    pub fn unbind(&self) -> Result<lambda::Expr> {
+    pub fn unbind(&self) -> Result<lambda::Expr, I> {
         let mut bindings = Vec::new();
         self.unbind_rec(&mut bindings)
     }
 
-    fn unbind_rec(&self, bindings: &mut Vec<(Rc<I>, VariableBind)>) -> Result<lambda::Expr> {
+    fn unbind_rec(&self, bindings: &mut Vec<(Rc<I>, VariableBind)>) -> Result<lambda::Expr, I> {
         use VariableBind::*;
         match self {
             Expr::Bind(name, value, expr) => {
@@ -75,19 +79,29 @@ impl<I: Eq + fmt::Display> Expr<I> {
                 bindings.pop();
                 Ok(expr)
             }
+            Expr::Apply(function, argument) => {
+                let function = function.borrow().unbind_rec(bindings)?;
+                let argument = argument.borrow().unbind_rec(bindings)?;
+                Ok(lambda::Expr::Apply(new_cell(function), new_cell(argument)))
+            }
             Expr::Value(value) => Ok(lambda::Expr::Value(value.clone())),
             Expr::Operator(op) => Ok(lambda::Expr::Operator(op.clone().into())),
+            Expr::Except(try_expr, except) => {
+                let try_expr = try_expr.borrow().unbind_rec(bindings)?;
+                let except = except.borrow().unbind_rec(bindings)?;
+                Ok(lambda::Expr::Except(new_cell(try_expr), new_cell(except)))
+            }
         }
     }
 }
 
 impl<I: Hash + Eq + Clone + fmt::Display> Expr<I> {
-    pub fn substitute(&mut self, context: &Context<I>) -> Result<()> {
+    pub fn substitute(&mut self, context: &Context<I>) -> Result<(), I> {
         let mut bound = Vec::new();
         self.substitute_rec(context, &mut bound)
     }
 
-    fn substitute_rec(&mut self, context: &Context<I>, bound: &mut Vec<Rc<I>>) -> Result<()> {
+    fn substitute_rec(&mut self, context: &Context<I>, bound: &mut Vec<Rc<I>>) -> Result<(), I> {
         use Expr::*;
         match self {
             Bind(name, value, expr) => {
@@ -105,6 +119,14 @@ impl<I: Hash + Eq + Clone + fmt::Display> Expr<I> {
                 bound.push(name.clone());
                 expr.borrow_mut().substitute_rec(context, bound)?;
                 bound.pop();
+            }
+            Apply(function, argument) => {
+                function.borrow_mut().substitute_rec(context, bound)?;
+                argument.borrow_mut().substitute_rec(context, bound)?;
+            }
+            Except(try_expr, except) => {
+                try_expr.borrow_mut().substitute_rec(context, bound)?;
+                except.borrow_mut().substitute_rec(context, bound)?;
             }
             _ => {}
         }
@@ -137,14 +159,37 @@ impl<I: Hash + Eq + Clone + fmt::Display> Expr<I> {
                 expr.borrow().free_variables_rec(free, bound);
                 bound.pop();
             }
+            Apply(function, argument) => {
+                function.borrow().free_variables_rec(free, bound);
+                argument.borrow().free_variables_rec(free, bound);
+            }
+            Except(try_expr, except) => {
+                try_expr.borrow().free_variables_rec(free, bound);
+                except.borrow().free_variables_rec(free, bound);
+            }
             _ => {}
         }
     }
 }
 
 impl<I: fmt::Display> fmt::Display for Expr<I> {
-    fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Expr::*;
+        match self {
+            Bind(name, value, expr) => {
+                write!(f, "(let {} := {} in {})", name, value.borrow(), expr.borrow())
+            }
+            Lambda(name, expr) => write!(f, "({} -> {})", name, expr.borrow()),
+            Apply(function, argument) => {
+                write!(f, "({} {})", function.borrow(), argument.borrow())
+            }
+            Variable(name) => write!(f, "{}", name),
+            Value(value) => write!(f, "{}", value),
+            Operator(operator) => write!(f, "{}", operator),
+            Except(try_expr, except) => {
+                write!(f, "(try {} except {})", try_expr.borrow(), except.borrow())
+            }
+        }
     }
 }
 
@@ -167,7 +212,7 @@ impl<I: Hash + Eq + fmt::Display + Clone> Context<I> {
     ///
     /// Can fail if there is introducing the expression would cause a cycle.
     /// Can fail if the name is already bound.
-    pub fn bind(&mut self, name: I, expr: impl Into<Expr<I>>) -> Result<()> {
+    pub fn bind(&mut self, name: I, expr: impl Into<Expr<I>>) -> Result<(), I> {
         let expr = expr.into();
         let name = Rc::new(name);
         self.ensure_undefined(&name)?.check_cycles(name.clone(), &expr)?;
@@ -185,7 +230,7 @@ impl<I: Hash + Eq + fmt::Display + Clone> Context<I> {
     ///
     /// Can fail if the name is not bound in the context.
     /// Can fail if not all values in the bound expression are bound to a value.
-    pub fn eval_named(&mut self, name: impl AsRef<I>) -> Result<Value> {
+    pub fn eval_named(&mut self, name: impl AsRef<I>) -> Result<Value, I> {
         let mut eval_stack = Vec::new();
         let name = Rc::new(name.as_ref().clone());
         let binding = self.take_bound(&name)?;
@@ -215,7 +260,7 @@ impl<I: Hash + Eq + fmt::Display + Clone> Context<I> {
     }
 
     /// Evaluate an expression within a context
-    pub fn eval(&mut self, mut expr: Expr<I>) -> Result<Value> {
+    pub fn eval(&mut self, mut expr: Expr<I>) -> Result<Value, I> {
         for variable in expr.free_variables() {
             if !self.is_evaluated(&variable) {
                 self.eval_named(variable)?;
@@ -227,7 +272,7 @@ impl<I: Hash + Eq + fmt::Display + Clone> Context<I> {
     }
 
     /// Ensure the name has not been bound to an expression or value
-    fn ensure_undefined<'c>(&'c self, name: &I) -> Result<&'c Self> {
+    fn ensure_undefined<'c>(&'c self, name: &I) -> Result<&'c Self, I> {
         if self.0.contains_key(name) {
             Err(name_already_bound(name))
         } else {
@@ -238,7 +283,7 @@ impl<I: Hash + Eq + fmt::Display + Clone> Context<I> {
     /// Check whether introducing a given expression with a given name would introduce cycles in
     /// the dependency graph. This is done by a depth first search on all dependant variables to
     /// see if the refer back to the proposed name.
-    fn check_cycles<'c>(&'c self, name: Rc<I>, expr: &Expr<I>) -> Result<&'c Self> {
+    fn check_cycles<'c>(&'c self, name: Rc<I>, expr: &Expr<I>) -> Result<&'c Self, I> {
         let mut unchecked = expr.free_variables().into_iter().collect::<Vec<_>>();
         let mut checked = HashSet::new();
 
@@ -263,11 +308,11 @@ impl<I: Hash + Eq + fmt::Display + Clone> Context<I> {
         Ok(self)
     }
 
-    fn get_bound(&self, name: &I) -> Result<&Binding<I>> {
+    fn get_bound(&self, name: &I) -> Result<&Binding<I>, I> {
         self.0.get(name).ok_or_else(|| name_not_bound(name))
     }
 
-    fn take_bound(&mut self, name: &I) -> Result<Binding<I>> {
+    fn take_bound(&mut self, name: &I) -> Result<Binding<I>, I> {
         self.0.remove(name).ok_or_else(|| name_not_bound(name))
     }
 
@@ -275,8 +320,8 @@ impl<I: Hash + Eq + fmt::Display + Clone> Context<I> {
         self.0.get(name).map(|binding| binding.is_evaluated()).unwrap_or(false)
     }
 
-    fn get_value(&self, name: &I) -> Result<Value> {
-        self.get_bound(name)?.value().ok_or(format_err!("{} is not evaluated", name))
+    fn get_value(&self, name: &I) -> Result<Value, I> {
+        self.get_bound(name)?.value().ok_or(expr_not_evaluated(name))
     }
 }
 
@@ -287,7 +332,7 @@ enum Binding<I> {
 }
 
 impl<I: Hash + Eq + Clone + fmt::Display> Binding<I> {
-    fn eval(&mut self) -> Result<()> {
+    fn eval(&mut self) -> Result<(), I> {
         match self {
             Binding::Evaluated(_) => Ok(()),
             Binding::Bound(expr) => {
@@ -297,7 +342,7 @@ impl<I: Hash + Eq + Clone + fmt::Display> Binding<I> {
         }
     }
 
-    fn substitute(&mut self, context: &Context<I>) -> Result<()> {
+    fn substitute(&mut self, context: &Context<I>) -> Result<(), I> {
         if let Binding::Bound(expr) = self {
             expr.substitute(context)
         } else {
@@ -339,14 +384,40 @@ impl<I> Binding<I> {
     }
 }
 
-fn name_already_bound<I: fmt::Display>(identifier: &I) -> Error {
-    format_err!("Name already bound: {}", identifier)
+fn name_already_bound<I: fmt::Display + Clone>(identifier: &I) -> crate::Error<I> {
+    Error::AlreadyBound(identifier.clone()).into()
 }
 
-fn recursion<I: fmt::Display>(identifier: &I) -> Error {
-    format_err!("Recursion dected in binding of {}", identifier)
+fn recursion<I: fmt::Display + Clone>(identifier: &I) -> crate::Error<I> {
+    Error::Recursion(identifier.clone()).into()
 }
 
-fn name_not_bound<I: fmt::Display>(identifier: &I) -> Error {
-    format_err!("Name not bound: {}", identifier)
+fn name_not_bound<I: fmt::Display + Clone>(identifier: &I) -> crate::Error<I> {
+    Error::NotBound(identifier.clone()).into()
 }
+
+fn expr_not_evaluated<I: fmt::Display + Clone>(identifier: &I) -> crate::Error<I> {
+    Error::NotEvaluated(identifier.clone()).into()
+}
+
+#[derive(Debug)]
+pub enum Error<I> {
+    NotBound(I),
+    AlreadyBound(I),
+    Recursion(I),
+    NotEvaluated(I),
+}
+
+impl<I: fmt::Display> fmt::Display for Error<I> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Error::*;
+        match self {
+            NotBound(identifier) => write!(f, "{} is not bound", identifier),
+            AlreadyBound(identifier) => write!(f, "{} is already bound", identifier),
+            Recursion(identifier) => write!(f, "Recursion dected in binding of {}", identifier),
+            NotEvaluated(identifier) => write!(f, "{} has not been evaluated", identifier),
+        }
+    }
+}
+
+type Result<T, I> = ::std::result::Result<T, super::Error<I>>;

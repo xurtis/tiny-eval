@@ -1,63 +1,38 @@
-mod data;
 mod data_new;
 pub mod binding;
-mod builtin;
-mod expr;
 pub mod lambda;
 pub mod typing;
 
-pub use data::Value;
-pub use expr::construct::*;
-pub use expr::{Identifier, Expr, Context, eval};
-pub use builtin::{value, function, Builtin};
-pub use builtin::construct::*;
-
-use std::rc::Rc;
 use std::fmt;
 
 /// Errors produced during evaluation
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Error<I> {
-    NotBool(Value<I>),
-    NotInt(Value<I>),
-    NotUInt(Value<I>),
-    NotFloat(Value<I>),
-    NotNumeric(Value<I>),
-    NotPair(Value<I>),
-    NotSum(Value<I>),
-    NotFunction(Value<I>),
-    NotBound(I),
-    External(Rc<dyn ::std::error::Error>),
-    Raise(Value<I>),
+    Eval(lambda::Error),
+    Expr(binding::Error<I>),
 }
 
-impl<I: Identifier> fmt::Display for Error<I> {
+impl<I: fmt::Display> fmt::Display for Error<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Error::*;
         match self {
-            NotBool(value) => write!(f, "{} is not a boolean", value),
-            NotInt(value) => write!(f, "{} is not a integer", value),
-            NotUInt(value) => write!(f, "{} is not an unsigned integer", value),
-            NotFloat(value) => write!(f, "{} is not a float", value),
-            NotNumeric(value) => write!(f, "{} is not numeric", value),
-            NotPair(value) => write!(f, "{} is not a pair", value),
-            NotSum(value) => write!(f, "{} is not a sum", value),
-            NotFunction(value) => write!(f, "{} is not a function", value),
-            NotBound(identifier) => write!(f, "{} is not bound", identifier),
-            External(error) => write!(f, "{}", error),
-            Raise(value) => write!(f, "{} raised as error by program", value),
+            Error::Eval(error) => write!(f, "Evaluation: {}", error),
+            Error::Expr(error) => write!(f, "Binding experssion: {}", error),
         }
     }
 }
 
-impl<I: Identifier> From<::std::convert::Infallible> for Error<I> {
-    fn from(error: ::std::convert::Infallible) -> Self {
-        Error::External(Rc::new(error))
+impl<I> From<lambda::Error> for Error<I> {
+    fn from(error: lambda::Error) -> Self {
+        Error::Eval(error)
     }
 }
 
-impl<I: Identifier> ::std::error::Error for Error<I> {}
+impl<I> From<binding::Error<I>> for Error<I> {
+    fn from(error: binding::Error<I>) -> Self {
+        Error::Expr(error)
+    }
+}
+
+impl<I: fmt::Display + fmt::Debug> ::std::error::Error for Error<I> {}
 
 pub type Result<T, I> = ::std::result::Result<T, Error<I>>;
-pub type ValueResult<I> = Result<Value<I>, I>;
-

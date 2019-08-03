@@ -3,28 +3,7 @@ use crate::data_new::{Cell, Value};
 use crate::typing::{Integer, Numeric};
 
 use std::rc::Rc;
-use std::cell::RefCell;
-use std::ops::{Deref, DerefMut};
 use std::fmt;
-
-use failure::{Error, format_err};
-
-/// Errors triggered by invalid operations
-#[derive(Debug, Clone)]
-enum Fault {
-    Raise(Value),
-}
-
-impl fmt::Display for Fault {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        unimplemented!()
-    }
-}
-
-impl std::error::Error for Fault {}
-
-/// Result of partial or full evaluation
-type Result<T> = ::std::result::Result<T, Error>;
 
 #[derive(Debug, Clone)]
 pub enum Operator {
@@ -32,24 +11,22 @@ pub enum Operator {
     Roll,
     /// `Unroll : rec t. T t -> T (rec t. T t)`
     Unroll,
-    /// `Fold : forall f. (forall a, b. (a -> b) -> f a -> f b) -> FoldOver f`
+    /// `Fold : forall f, a. (forall a, b. (a -> b) -> f a -> f b) -> (f a -> a) -> rec t. f t -> a`
     Fold,
-    /// `FoldOver f : forall a. (f a -> a) -> FoldWith f a`
-    FoldOver(Value),
-    /// `FoldWith f a : rec t. f t -> a`
-    FoldWith(Value, Value),
+    /// `Recurse : forall a. (a -> a) -> a`
+    ///
+    /// Behold; the Y-combinator, in all it's glory.
+    Recurse,
     /// `Raise : forall a, b. a -> b`
     Raise,
-    /// `Except : forall a. (forall b. b -> a) -> ExceptWith a`
-    Except,
-    /// `ExceptWith a : a -> a`
-    ExceptWith(Value),
     /// `Pair : forall a, b. a -> b -> (a, b)`
     Pair,
     /// `First : forall a, b. (a, b) -> a`
     First,
     /// `Second : forall a, b. (a, b) -> b`
     Second,
+    /// `Empty : forall a. rec t. () + (t, a)`
+    Empty,
     /// `Element n : forall a[0..n], b. (a[0], (..., (a[n - 1], b))) -> b`
     ///
     /// Allows for quickly selecting an element of a deeply nested pair by effectively performing n
@@ -61,75 +38,41 @@ pub enum Operator {
     Left,
     /// `Right : forall a, b. b -> a + b`
     Right,
-    /// `Case : forall a, c. (a -> c) -> LeftCase a c`
+    /// `Case : forall a, b, c. (a -> c) -> (b -> c) -> (a + b) -> c`
     Case,
-    /// `LeftCase a c : forall b. (b -> c) -> CaseOf a b c`
-    LeftCase(Value),
-    /// `CaseOf a b c : (a + b) -> c`
-    CaseOf(Value, Value),
-    /// `SkipLeft n : forall c. (forall a. a -> c) -> SkipLeftWith n c`
+    /// `SkipLeft n : forall a[0..n], b, c. (forall a. a -> c) -> (b -> c) -> (a[0] + (... + (a[n - 1] + b))) -> c`
     ///
     /// Allows for quickly matching deeply nested sum values to match a single specific case by
     /// discarding effectively performing n stacked matches on the right.
     SkipLeft(u64),
-    /// `SkipLeft n c : forall b. (b -> c) -> SkipLeftMatch n b c`
-    SkipLeftWith(u64, Value),
-    /// `SkipLeft n b c: forall a[0..n]. (a[0] + (... + (a[n - 1] + b))) -> c`
-    SkipLeftMatch(u64, Value, Value),
     /// `Not : Bool -> Bool`
     Not,
-    /// `And : Bool -> AndWith`
+    /// `And : Bool -> Bool -> Bool`
     And,
-    /// `AndWith : Bool -> Bool`
-    AndWith(Value),
-    /// `Or : Bool -> OrWith`
+    /// `Or : Bool -> Bool -> Bool`
     Or,
-    /// `OrWith : Bool -> Bool`
-    OrWith(Value),
-    /// `Greater : Numeric n => n -> GreaterThan n`
+    /// `Greater : Numeric n => n -> n -> n`
     Greater(Numeric),
-    /// `GreaterThan n : n -> Bool`
-    GreaterThan(Value),
     /// `GreaterEqual : Numeric n => n -> n -> Bool`
     GreaterOrEqual(Numeric),
-    /// `GreaterThanEqualTo n : n -> Bool`
-    GreaterThanOrEqualTo(Value),
     /// `Less : Numeric n => n -> n -> Bool`
     Less(Numeric),
-    /// `LessThan n : n -> Bool`
-    LessThan(Value),
     /// `LessEqual : Numeric n => n -> n -> Bool`
     LessOrEqual(Numeric),
-    /// `LessThanEqualTo n : n -> Bool`
-    LessThanOrEqualTo(Value),
-    /// `Equal : Numeric n => n -> EqualTo n`
+    /// `Equal : Numeric n => n -> n -> n`
     Equal(Numeric),
-    /// `EqualTo n : n -> Bool`
-    EqualTo(Value),
-    /// `NotEqual : Numeric n => n -> NotEqualTo`
+    /// `NotEqual : Numeric n => n -> n -> n`
     NotEqual(Numeric),
-    /// `NotEqualTo n : n -> Bool`
-    NotEqualTo(Value),
-    /// `Add : Numeric n => n -> AddTo n`
+    /// `Add : Numeric n => n -> n -> n`
     Add(Numeric),
-    /// `AddTo n : n -> n`
-    AddTo(Value),
-    /// `Subtract : Numeric n => n -> SubtractFrom n`
+    /// `Subtract : Numeric n => n -> n -> n`
     Subtract(Numeric),
-    /// `SubtractFrom n : n -> n`
-    SubtractFrom(Value),
-    /// `Multiply : Numeric n => n -> MultiplyWith n`
+    /// `Multiply : Numeric n => n -> n -> n`
     Multiply(Numeric),
-    /// `MultiplyWith n : n -> n`
-    MultiplyWith(Value),
-    /// `Divide : Numeric n => n -> DivideWith n`
+    /// `Divide : Numeric n => n -> n -> n`
     Divide(Numeric),
-    /// `DivideWith n : n -> n`
-    DivideWith(Value),
-    /// `Remainder : Numeric n => n -> RemainderWith n`
+    /// `Remainder : Numeric n => n -> n -> n`
     Remainder(Numeric),
-    /// `RemainderWith n : n -> n`
-    RemainderWith(Value),
     /// `ShiftLeft : Integer i => i -> i`
     ShiftLeft(Integer),
     /// `ShiftRight : Integer i => i -> i`
@@ -163,7 +106,15 @@ pub enum Operator {
 }
 
 impl Operator {
-    fn apply(&self, operand: Value) -> Result {
+    fn value(&self) -> Value {
+        match self {
+            _ => unimplemented!()
+        }
+    }
+}
+
+impl fmt::Display for Operator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         unimplemented!()
     }
 }
@@ -175,28 +126,174 @@ pub enum Expr {
     /// Application of a lambda
     Apply(Cell<Expr>, Cell<Expr>),
     /// De Bruijin indexed variable reference
-    Variable(u64),
+    Variable(usize),
     /// Builtin operator
     Operator(Operator),
     /// Builtin value
     Value(Value),
+    /// Exception handling
+    Except(Cell<Expr>, Cell<Expr>),
 }
 
 impl Expr {
     /// Strict evaluation of the lambda expression to a value.
-    pub fn eval(self) -> Result<Value> {
-        unimplemented!()
+    pub fn eval(&mut self) -> Result<Value> {
+        if let Expr::Value(value) = self {
+            Ok(value.clone())
+        } else {
+            self.eval_with_context(List::new())
+        }
     }
 
-    pub fn reduce(&mut self) -> Result<Value> {
-        unimplemented!()
+    fn eval_with_context(&mut self, context: List<Value>) -> Result<Value> {
+        use crate::data_new::Value::*;
+        use Expr::*;
+
+        match self {
+            Lambda(expr) => {
+                let expr = expr.clone();
+                let context = context.clone();
+                let function = move |arg| {
+                    let context = context.push(arg);
+                    expr.borrow_mut().eval_with_context(context)
+                };
+                *self = Value(Function(Rc::new(function)));
+                self.eval()
+            }
+            Apply(lambda, argument) => {
+                let lambda = lambda.borrow_mut().reduce(context)?;
+                *self = Value(lambda.apply(Self::thunk(argument))?);
+                self.eval()
+            }
+            Variable(variable) => {
+                let value = context.get(*variable).ok_or(NotBound(*variable))?;
+                *self = Value(value);
+                self.eval()
+            }
+            Operator(operator) => {
+                *self = Value(operator.value());
+                self.eval()
+            }
+            Value(value) => Ok(value.clone()),
+            Except(try_expr, except) => {
+                let result = try_expr.borrow_mut().reduce(context.clone());
+                match result {
+                    Ok(value) => {
+                        *self = Value(value);
+                    }
+                    _error => {
+                        // TODO: Lift the error to become the argument
+                        let exception = crate::data_new::Value::unit();
+                        let except = except.borrow_mut().reduce(context)?;
+                        *self = Value(except.apply(exception)?);
+                    }
+                }
+                self.eval()
+            }
+        }
     }
 
-    fn substitute(&mut self, expr: Cell<Expr>, index: i64) {
-        unimplemented!()
+    fn reduce(&mut self, context: List<Value>) -> Result<Value> {
+        self.eval_with_context(context)?;
+        if let Expr::Value(value) = self {
+            value.reduce()?;
+        }
+        self.eval()
     }
 
-    fn remove_dead_code(&mut self) {
-        unimplemented!()
+    fn thunk(expr: &Cell<Self>) -> Value {
+        let expr = expr.clone();
+        Value::Thunk(Rc::new(move || expr.borrow_mut().eval()))
     }
 }
+
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Expr::*;
+        match self {
+            Lambda(expr) => write!(f, "λ.{}", expr.borrow()),
+            Apply(function, argument) => {
+                write!(f, "({} {})", function.borrow(), argument.borrow())
+            }
+            Variable(name) => write!(f, "{}", name),
+            Value(value) => write!(f, "{}", value),
+            Operator(operator) => write!(f, "{}", operator),
+            Except(try_expr, except) => {
+                write!(f, "(try {} except {})", try_expr.borrow(), except.borrow())
+            }
+        }
+    }
+}
+
+/// Persistent linked list structure
+#[derive(Debug)]
+enum ListNode<T> {
+    Node(T, List<T>),
+    Empty,
+}
+
+#[derive(Debug)]
+struct List<T>(Rc<ListNode<T>>);
+
+impl<T: Clone> List<T> {
+    fn new() -> Self {
+        List(Rc::new(ListNode::Empty))
+    }
+
+    fn push(&self, value: T) -> List<T> {
+        List(Rc::new(ListNode::Node(value, (*self).clone())))
+    }
+
+    fn get(&self, index: usize) -> Option<T> {
+        use ListNode::*;
+        match (index, self.0.as_ref()) {
+            (0, Node(value, _)) => Some(value.clone()),
+            (n, Node(_, next)) => next.get(n - 1),
+            (_, Empty) => None,
+        }
+    }
+}
+
+impl<T> Clone for List<T> {
+    fn clone(&self) -> Self {
+        List(self.0.clone())
+    }
+}
+
+/// Errors triggered by invalid operations
+#[derive(Debug)]
+pub enum Error {
+    Raise(Value),
+    NotBound(usize),
+    NotBool(Value),
+    NotInt(Value),
+    NotUInt(Value),
+    NotFloat(Value),
+    NotNumeric(Value),
+    NotPair(Value),
+    NotSum(Value),
+    NotFunction(Value),
+}
+use Error::*;
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Raise(value) => write!(f, "{} raised as error by program", value),
+            NotBound(index) => write!(f, "{} is not bound", index),
+            NotBool(value) => write!(f, "{} is not a boolean", value),
+            NotInt(value) => write!(f, "{} is not a integer", value),
+            NotUInt(value) => write!(f, "{} is not an unsigned integer", value),
+            NotFloat(value) => write!(f, "{} is not a float", value),
+            NotNumeric(value) => write!(f, "{} is not numeric", value),
+            NotPair(value) => write!(f, "{} is not a pair", value),
+            NotSum(value) => write!(f, "{} is not a sum", value),
+            NotFunction(value) => write!(f, "{} is not a function", value),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+/// Result of partial or full evaluation
+type Result<T> = ::std::result::Result<T, Error>;
