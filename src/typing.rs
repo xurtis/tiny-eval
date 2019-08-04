@@ -5,6 +5,7 @@ pub enum Type {
     Inferred,
     Numeric,
     Integer,
+    Binary,
     Unit,
     Bool,
     Int,
@@ -19,7 +20,7 @@ pub enum Type {
 }
 
 /// Types for which numeric operations are valid
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Numeric {
     Inferred,
     Int,
@@ -28,9 +29,18 @@ pub enum Numeric {
 }
 
 /// Types for which bitwise operations are valid
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Integer {
     Inferred,
     Int,
     UInt,
+}
+
+/// Types for which bitwise operators are valid
+#[derive(Debug, Clone, Copy)]
+pub enum Binary {
+    Inferred,
+    Int,
+    UInt,
+    Bool,
 }

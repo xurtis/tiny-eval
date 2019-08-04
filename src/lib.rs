@@ -2,6 +2,7 @@ mod data_new;
 pub mod binding;
 pub mod lambda;
 pub mod typing;
+pub mod operator;
 
 use std::fmt;
 

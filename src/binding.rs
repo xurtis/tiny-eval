@@ -1,7 +1,8 @@
 //! Binding language
 
 use crate::data_new::{Value, Cell, new_cell};
-use crate::lambda::{Operator, self};
+use crate::lambda;
+use crate::operator::Operator;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
