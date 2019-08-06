@@ -23,8 +23,6 @@ pub enum Expr<I> {
     Value(Value),
     /// Builtin operator
     Operator(Operator),
-    /// Exception handling
-    Except(Cell<Expr<I>>, Cell<Expr<I>>),
 }
 
 enum VariableBind {
@@ -87,11 +85,6 @@ impl<I: Eq + Hash + fmt::Display + Clone> Expr<I> {
             }
             Expr::Value(value) => Ok(lambda::Expr::Value(value.clone())),
             Expr::Operator(op) => Ok(lambda::Expr::Operator(op.clone().into())),
-            Expr::Except(try_expr, except) => {
-                let try_expr = try_expr.borrow().unbind_rec(bindings)?;
-                let except = except.borrow().unbind_rec(bindings)?;
-                Ok(lambda::Expr::Except(new_cell(try_expr), new_cell(except)))
-            }
         }
     }
 }
@@ -124,10 +117,6 @@ impl<I: Hash + Eq + Clone + fmt::Display> Expr<I> {
             Apply(function, argument) => {
                 function.borrow_mut().substitute_rec(context, bound)?;
                 argument.borrow_mut().substitute_rec(context, bound)?;
-            }
-            Except(try_expr, except) => {
-                try_expr.borrow_mut().substitute_rec(context, bound)?;
-                except.borrow_mut().substitute_rec(context, bound)?;
             }
             _ => {}
         }
@@ -164,10 +153,6 @@ impl<I: Hash + Eq + Clone + fmt::Display> Expr<I> {
                 function.borrow().free_variables_rec(free, bound);
                 argument.borrow().free_variables_rec(free, bound);
             }
-            Except(try_expr, except) => {
-                try_expr.borrow().free_variables_rec(free, bound);
-                except.borrow().free_variables_rec(free, bound);
-            }
             _ => {}
         }
     }
@@ -187,9 +172,6 @@ impl<I: fmt::Display> fmt::Display for Expr<I> {
             Variable(name) => write!(f, "{}", name),
             Value(value) => write!(f, "{}", value),
             Operator(operator) => write!(f, "{}", operator),
-            Except(try_expr, except) => {
-                write!(f, "(try {} except {})", try_expr.borrow(), except.borrow())
-            }
         }
     }
 }

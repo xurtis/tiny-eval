@@ -17,8 +17,6 @@ pub enum Expr {
     Operator(Operator),
     /// Builtin value
     Value(Value),
-    /// Exception handling
-    Except(Cell<Expr>, Cell<Expr>),
 }
 
 impl Expr {
@@ -58,21 +56,6 @@ impl Expr {
                 self.eval()
             }
             Expr::Value(value) => Ok(value.clone()),
-            Expr::Except(try_expr, except) => {
-                let result = try_expr.borrow_mut().reduce(context.clone());
-                match result {
-                    Ok(value) => {
-                        *self = Expr::Value(value);
-                    }
-                    _error => {
-                        // TODO: Lift the error to become the argument
-                        let exception = crate::data_new::Value::unit();
-                        let except = except.borrow_mut().reduce(context)?;
-                        *self = Expr::Value(except.apply(exception)?);
-                    }
-                }
-                self.eval()
-            }
         }
     }
 
@@ -101,9 +84,6 @@ impl fmt::Display for Expr {
             Variable(name) => write!(f, "{}", name),
             Value(value) => write!(f, "{}", value),
             Operator(operator) => write!(f, "{}", operator),
-            Except(try_expr, except) => {
-                write!(f, "(try {} except {})", try_expr.borrow(), except.borrow())
-            }
         }
     }
 }
