@@ -186,8 +186,9 @@ macro_rules! builtin_value {
         impl TryInto<$from> for Value {
             type Error = Error;
 
-            fn try_into(self) -> Result<$from> {
-                if let Value::$var(value) = self {
+            fn try_into(mut self) -> Result<$from> {
+                let value = self.reduce()?;
+                if let Value::$var(value) = value {
                     Ok(value as $from)
                 } else {
                     Err(Error::$err(self))

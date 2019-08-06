@@ -521,8 +521,8 @@ mod higher_order {
     impl TryFrom<Value> for Numeric {
         type Error = Error;
 
-        fn try_from(value: Value) -> Result<Self> {
-            match value {
+        fn try_from(mut value: Value) -> Result<Self> {
+            match value.reduce()? {
                 Value::Int(i) => Ok(Numeric::Int(i)),
                 Value::UInt(u) => Ok(Numeric::UInt(u)),
                 Value::Float(f) => Ok(Numeric::Float(f)),
@@ -573,8 +573,8 @@ mod higher_order {
     impl TryFrom<Value> for Integer {
         type Error = Error;
 
-        fn try_from(value: Value) -> Result<Self> {
-            match value {
+        fn try_from(mut value: Value) -> Result<Self> {
+            match value.reduce()? {
                 Value::Int(i) => Ok(Integer::Int(i)),
                 Value::UInt(u) => Ok(Integer::UInt(u)),
                 value => Err(NotInteger(value)),
@@ -638,8 +638,8 @@ mod higher_order {
     impl TryFrom<Value> for Binary {
         type Error = Error;
 
-        fn try_from(value: Value) -> Result<Self> {
-            match value {
+        fn try_from(mut value: Value) -> Result<Self> {
+            match value.reduce()? {
                 Value::Int(i) => Ok(Binary::Int(i)),
                 Value::UInt(u) => Ok(Binary::UInt(u)),
                 Value::Bool(b) => Ok(Binary::Bool(b)),

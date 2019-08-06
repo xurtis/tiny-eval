@@ -128,6 +128,7 @@ impl<T> Clone for List<T> {
 pub enum Error {
     Raise(Value),
     NotBound(usize),
+    NotUnit(Value),
     NotBool(Value),
     NotInt(Value),
     NotUInt(Value),
@@ -146,6 +147,7 @@ impl fmt::Display for Error {
         match self {
             Raise(value) => write!(f, "{} raised as error by program", value),
             NotBound(index) => write!(f, "{} is not bound", index),
+            NotUnit(value) => write!(f, "{} is not a unit", value),
             NotBool(value) => write!(f, "{} is not a boolean", value),
             NotInt(value) => write!(f, "{} is not an integer", value),
             NotUInt(value) => write!(f, "{} is not an unsigned integer", value),
