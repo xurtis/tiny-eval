@@ -64,6 +64,30 @@ impl Value {
     pub fn unit() -> Self {
         Value::Unit
     }
+
+    pub fn apply(&self, argument: Value) -> Result<Value> {
+        if let Value::Function(function) = self {
+            function(argument)
+        } else {
+            Err(Error::NotFunction(self.clone()))
+        }
+    }
+
+    pub fn function(function: impl Fn(Value) -> Value + 'static) -> Value {
+        Value::Function(Rc::new(move |arg| Ok(function(arg))))
+    }
+
+    pub fn function_try(function: impl Fn(Value) -> Result<Value> + 'static) -> Value {
+        Value::Function(Rc::new(function))
+    }
+
+    pub fn thunk(thunk: impl Fn() -> Value + 'static) -> Value {
+        Value::Thunk(Rc::new(move || Ok(thunk())))
+    }
+
+    pub fn thunk_try(thunk: impl Fn() -> Result<Value> + 'static) -> Value {
+        Value::Thunk(Rc::new(thunk))
+    }
 }
 
 impl fmt::Debug for Value {
@@ -132,35 +156,22 @@ impl fmt::Display for Value {
     }
 }
 
-impl Value {
-    pub fn apply(&self, argument: Value) -> Result<Value> {
-        if let Value::Function(function) = self {
-            function(argument)
-        } else {
-            Err(Error::NotFunction(self.clone()))
-        }
-    }
-
-    pub fn function(function: impl Fn(Value) -> Value + 'static) -> Value {
-        Value::Function(Rc::new(move |arg| Ok(function(arg))))
-    }
-
-    pub fn function_try(function: impl Fn(Value) -> Result<Value> + 'static) -> Value {
-        Value::Function(Rc::new(function))
-    }
-
-    pub fn thunk(thunk: impl Fn() -> Value + 'static) -> Value {
-        Value::Thunk(Rc::new(move || Ok(thunk())))
-    }
-
-    pub fn thunk_try(thunk: impl Fn() -> Result<Value> + 'static) -> Value {
-        Value::Thunk(Rc::new(thunk))
-    }
-}
-
 impl From<()> for Value {
     fn from(_: ()) -> Value {
         Value::Unit
+    }
+}
+
+impl TryInto<()> for Value {
+    type Error = Error;
+
+    fn try_into(mut self) -> Result<()> {
+        let value = self.reduce()?;
+        if let Value::Unit = value {
+            Ok(())
+        } else {
+            Err(Error::NotUnit(self))
+        }
     }
 }
 
